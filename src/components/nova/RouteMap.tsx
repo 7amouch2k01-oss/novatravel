@@ -151,11 +151,15 @@ export function RouteMap({ stops, className, compact = false, activeDestination 
       {/* Floating indicator info */}
       <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between rounded-lg bg-background/85 px-2.5 py-1 text-[11px] backdrop-blur-sm border border-border/50">
         <span className="flex items-center gap-1 font-medium text-foreground">
-          <Navigation className="size-3 text-accent animate-pulse" />
-          {uniquePts.length} Live Stop{uniquePts.length === 1 ? "" : "s"}
+          <Navigation className={cn("size-3 text-accent", uniquePts.length > 0 && "animate-pulse")} />
+          {uniquePts.length > 0
+            ? `${uniquePts.length} Live Stop${uniquePts.length === 1 ? "" : "s"}`
+            : "No stops added yet"}
         </span>
         <span className="text-muted-foreground truncate max-w-[170px]">
-          {uniquePts.map((p) => p.name).join(" → ")}
+          {uniquePts.length > 0
+            ? uniquePts.map((p) => p.name).join(" → ")
+            : "Awaiting your choices"}
         </span>
       </div>
     </div>

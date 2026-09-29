@@ -25,11 +25,10 @@ import {
 } from "lucide-react";
 import { NovaMark, Wordmark } from "@/components/nova/NovaMark";
 import { RouteMap } from "@/components/nova/RouteMap";
-import { BudgetBar, budgetColors, fmt } from "@/components/nova/Budget";
 import { MessageBubble } from "@/components/nova/MessageBubble";
 import { ToolCallIndicator } from "@/components/nova/ToolCallIndicator";
 import { ModeSwitcher } from "@/components/nova/ModeSwitcher";
-import { budget, budgetTotal, bySlug, tripStops } from "@/lib/tunisia";
+import { bySlug } from "@/lib/tunisia";
 import { useNovaChat, useNovaStatus } from "@/hooks/use-nova-chat";
 import type { Itinerary } from "@/lib/nova/types";
 import { cn } from "@/lib/utils";
@@ -253,21 +252,15 @@ function Workspace() {
           </div>
         )}
 
-        {/* Default trip display when no dynamic context */}
+        {/* Empty state when no trip context yet */}
         {!tripContext.destination && (
-          <div className="mt-auto rounded-2xl border border-sidebar-border bg-card p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Sample trip
+          <div className="mt-auto rounded-2xl border border-dashed border-sidebar-border bg-card/50 p-4 text-center">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              No active trip yet.
             </p>
-            <p className="mt-2 font-display font-semibold">Tunisia Adventure</p>
-            <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
-              <span>5 days</span>
-              <span>2 travelers</span>
-            </div>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full w-[68%] rounded-full bg-accent" />
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">Plan 68% complete</p>
+            <p className="mt-1 text-[10px] text-muted-foreground/75">
+              Tell NOVA your dream destination, dates, or budget to start planning live.
+            </p>
           </div>
         )}
 
@@ -420,13 +413,13 @@ function Workspace() {
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl bg-secondary p-3">
             <p className="font-display text-lg font-semibold">
-              {tripContext.durationDays ?? (tripContext.destination ? "—" : "5")}
+              {tripContext.durationDays ? `${tripContext.durationDays}` : "—"}
             </p>
             <p className="text-[11px] text-muted-foreground">days</p>
           </div>
           <div className="rounded-xl bg-secondary p-3">
             <p className="font-display text-lg font-semibold">
-              {tripContext.travelers ?? (tripContext.destination ? "—" : "2")}
+              {tripContext.travelers ? `${tripContext.travelers}` : "—"}
             </p>
             <p className="text-[11px] text-muted-foreground">travelers</p>
           </div>
@@ -434,9 +427,7 @@ function Workspace() {
             <p className="font-display text-lg font-semibold">
               {tripContext.budget
                 ? `${tripContext.budget.toLocaleString()}`
-                : tripContext.destination
-                ? "—"
-                : "2,500"}
+                : "—"}
             </p>
             <p className="text-[11px] text-muted-foreground">
               {tripContext.currency ?? "TND"} budget
@@ -474,7 +465,7 @@ function Workspace() {
                 ? `${tripContext.stops.length} stop${tripContext.stops.length > 1 ? "s" : ""}`
                 : tripContext.destination
                 ? "Active destination"
-                : "Sample route"}
+                : "Live canvas"}
             </span>
           </div>
 
@@ -484,7 +475,7 @@ function Workspace() {
                 ? tripContext.stops
                 : tripContext.destination
                 ? [tripContext.destination]
-                : tripStops
+                : []
             }
             activeDestination={tripContext.destination}
             compact
@@ -498,7 +489,7 @@ function Workspace() {
             <div className="flex items-center gap-2 border-b border-border pb-2">
               <Calendar className="size-4 text-accent" />
               <h3 className="font-display text-sm font-semibold">
-                Confirmed Days Plan ({tripContext.confirmedDaysPlan.length} Days)
+                Confirmed Plan ({tripContext.confirmedDaysPlan.length} Days)
               </h3>
             </div>
 
@@ -547,21 +538,18 @@ function Workspace() {
               ))}
             </div>
           </div>
-        ) : (
-          /* Default Destinations & Budget view if no confirmed plan */
-          <>
-            <p className="mt-6 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {tripContext.destination ? "Trip Highlights" : "Destinations"}
+        ) : tripContext.stops && tripContext.stops.length > 0 ? (
+          /* Live Destinations from user inputs when plan not yet confirmed */
+          <div className="mt-6">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Planned Destinations
             </p>
             <ul className="mt-3 space-y-2">
-              {(tripContext.stops && tripContext.stops.length > 0
-                ? tripContext.stops
-                : tripStops
-              ).slice(0, 4).map((s, i) => {
+              {tripContext.stops.map((s, i) => {
                 const d = bySlug(s.toLowerCase());
                 return (
                   <li key={s}>
-                    <div className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-secondary">
+                    <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/40 p-2">
                       {d?.image ? (
                         <img
                           src={d.image}
@@ -579,10 +567,10 @@ function Workspace() {
                           {d ? d.name : s}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {d?.duration ?? "Exploration stop"}
+                          {d?.region ?? "Selected stop"}
                         </p>
                       </div>
-                      <span className="grid size-6 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                      <span className="grid size-6 place-items-center rounded-full bg-accent text-[10px] font-bold text-accent-foreground">
                         {i + 1}
                       </span>
                     </div>
@@ -590,40 +578,18 @@ function Workspace() {
                 );
               })}
             </ul>
-
-            <div className="mt-6 flex items-baseline justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Estimated budget
-              </p>
-              <span className="rounded-full bg-sand/50 px-2 py-0.5 text-[10px] font-semibold">
-                Estimated
-              </span>
-            </div>
-            <div className="mt-3">
-              <BudgetBar />
-            </div>
-            <ul className="mt-4 space-y-2 text-sm">
-              {budget.map((b, i) => (
-                <li key={b.label} className="flex items-center gap-2">
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ background: budgetColors[i] }}
-                  />
-                  {b.label}
-                  <span className="ml-auto font-medium">{fmt(b.value)} TND</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
-              <span className="text-sm font-semibold">Total</span>
-              <span className="font-display text-2xl font-semibold">
-                ~{fmt(tripContext.budget ?? budgetTotal)} {tripContext.currency ?? "TND"}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              AI estimate — actual prices may vary.
+          </div>
+        ) : (
+          /* Clean live waiting state */
+          <div className="mt-8 rounded-2xl border border-dashed border-border bg-card/40 p-6 text-center">
+            <MapPin className="mx-auto size-7 text-muted-foreground/60" />
+            <p className="mt-3 font-display text-sm font-semibold text-foreground">
+              Live Trip Canvas
             </p>
-          </>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ask NOVA to plan a trip, search hotels, or discover places. Every decision you make and every plan you confirm will appear here in real-time.
+            </p>
+          </div>
         )}
       </aside>
     </div>
