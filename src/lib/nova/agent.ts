@@ -23,8 +23,8 @@ import {
   GeminiDestinationProvider,
 } from "./providers/travel";
 
-const MODEL = "gemini-2.5-flash";
-const ITINERARY_MODEL = "gemini-2.5-pro";  // Use Pro for complex planning tasks
+const MODEL = "gemini-3.5-flash-lite";
+const ITINERARY_MODEL = "gemini-3.1-pro-preview";
 
 function getAI(): GoogleGenAI {
   const apiKey = process.env["GEMINI_API_KEY"];
