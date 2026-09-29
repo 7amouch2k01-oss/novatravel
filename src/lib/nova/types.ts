@@ -44,6 +44,7 @@ export type MessageContentType =
   | "itinerary_results"
   | "booking_summary"
   | "destination_results"
+  | "document_analysis"
   | "error";
 
 export interface HotelResult {
@@ -163,6 +164,46 @@ export interface BookingConfirmation {
   message: string;
 }
 
+export interface DocumentAttachment {
+  name: string;
+  mimeType: string;
+  base64: string; // raw base64 data
+  sizeBytes: number;
+}
+
+export interface DocumentAnalysisResult {
+  documentType: string; // e.g. "Flight Ticket / Boarding Pass", "Hotel Reservation", "Visa / Passport", etc.
+  fileName: string;
+  summary: string;
+  keyDetails: Record<string, string>;
+  flightInfo?: {
+    airline?: string | undefined;
+    flightNumber?: string | undefined;
+    departureCity?: string | undefined;
+    departureTime?: string | undefined;
+    departureDate?: string | undefined;
+    arrivalCity?: string | undefined;
+    arrivalTime?: string | undefined;
+    arrivalDate?: string | undefined;
+    duration?: string | undefined;
+    seat?: string | undefined;
+    gate?: string | undefined;
+    terminal?: string | undefined;
+    baggage?: string | undefined;
+    passengerName?: string | undefined;
+    bookingReference?: string | undefined;
+  } | undefined;
+  hotelInfo?: {
+    hotelName?: string | undefined;
+    checkIn?: string | undefined;
+    checkOut?: string | undefined;
+    address?: string | undefined;
+    confirmationNumber?: string | undefined;
+    guestName?: string | undefined;
+  } | undefined;
+  answeredQuestion?: string | undefined;
+}
+
 export interface MessageContent {
   type: MessageContentType;
   text?: string | undefined;
@@ -174,6 +215,7 @@ export interface MessageContent {
   booking?: BookingConfirmation | undefined;
   sources?: Source[] | undefined;
   destinations?: DestinationResult[] | undefined;
+  documentAnalysis?: DocumentAnalysisResult | undefined;
 }
 
 export interface DestinationResult {
@@ -196,6 +238,7 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: MessageContent;
+  attachment?: DocumentAttachment | undefined;
   toolCalls?: ToolCall[] | undefined;
   timestamp: number;
 }
@@ -245,7 +288,8 @@ export type IntentType =
   | "BOOKING_CONFIRMATION"
   | "TRIP_MODIFICATION"
   | "ITINERARY_BUILD"
-  | "BUDGET_CALCULATION";
+  | "BUDGET_CALCULATION"
+  | "DOCUMENT_ANALYSIS";
 
 export interface DetectedIntent {
   type: IntentType;
@@ -261,6 +305,7 @@ export interface AgentRequest {
   history: Array<{ role: "user" | "model"; text: string }>;
   tripContext: TripContext;
   mode: AgentMode;
+  attachment?: DocumentAttachment | undefined;
 }
 
 export interface AgentResponse {

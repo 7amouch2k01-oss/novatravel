@@ -13,7 +13,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import type { AgentRequest, AgentResponse, IntentType, TripContext, MessageContent, ToolCall, Source, JsonValue, Itinerary, ItineraryDay } from "./types";
+import type { AgentRequest, AgentResponse, IntentType, TripContext, MessageContent, ToolCall, Source, JsonValue, Itinerary, ItineraryDay, DocumentAttachment, DocumentAnalysisResult } from "./types";
 import { getWebSearchProvider } from "./providers/web-search";
 import {
   GeminiHotelProvider,
@@ -101,13 +101,13 @@ New message: "${message}"
 
 Return JSON with:
 {
-  "intent": one of [GENERAL_QUERY, GENERAL_CONVERSATION, TRAVEL_RESEARCH, TRIP_PLANNING, HOTEL_SEARCH, FLIGHT_SEARCH, RESTAURANT_SEARCH, ACTIVITY_SEARCH, DESTINATION_RESEARCH, BOOKING_REQUEST, BOOKING_CONFIRMATION, TRIP_MODIFICATION, ITINERARY_BUILD, BUDGET_CALCULATION],
+  "intent": one of [GENERAL_QUERY, GENERAL_CONVERSATION, TRAVEL_RESEARCH, TRIP_PLANNING, HOTEL_SEARCH, FLIGHT_SEARCH, RESTAURANT_SEARCH, ACTIVITY_SEARCH, DESTINATION_RESEARCH, BOOKING_REQUEST, BOOKING_CONFIRMATION, TRIP_MODIFICATION, ITINERARY_BUILD, BUDGET_CALCULATION, DOCUMENT_ANALYSIS],
   "mode": "general" or "travel",
   "extractedContext": {
     only include fields explicitly mentioned or strongly implied:
-    "destination": string or null,
+    "destination": string or null (e.g. if user says "go from Tunisia to visit Italy", destination is "Italy"),
     "stops": array of destination/city strings mentioned or visited in the trip e.g. ["Tunis", "Carthage", "Sidi Bou Said"] or null,
-    "origin": string or null,
+    "origin": string or null (e.g. if user says "from Tunisia to Italy" or "flying from Tunis", origin is "Tunisia" or "Tunis"),
     "departureDate": "YYYY-MM-DD or relative like next month" or null,
     "returnDate": "YYYY-MM-DD" or null,
     "durationDays": number or null,
@@ -381,7 +381,175 @@ async function executeWebSearch(query: string, label: string): Promise<{ sources
   }
 }
 
-// â”€â”€â”€ Response Generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Document Intelligence & Ticket Analysis ──────────────────────────────────
+
+async function executeDocumentAnalysis(
+  attachment: DocumentAttachment,
+  userMessage: string,
+  _context: TripContext
+): Promise<{
+  analysis: DocumentAnalysisResult;
+  extractedContext: Partial<TripContext>;
+  toolCall: ToolCall;
+}> {
+  const id = `tool-doc-${Date.now()}`;
+  const toolCall: ToolCall = {
+    id,
+    name: "analyze_document",
+    label: `Analyzing document: ${attachment.name}...`,
+    status: "running",
+    startedAt: Date.now(),
+  };
+
+  const ai = getAI();
+  try {
+    const cleanBase64 = attachment.base64.replace(/^data:[^;]+;base64,/, "");
+
+    const prompt = `You are a world-class Travel Document and Ticket Intelligence Analyst for TUNITRAVEL.
+The user has uploaded a travel document: "${attachment.name}" (${attachment.mimeType}).
+User query / prompt: "${userMessage || "Extract all details, flight schedule, start/stop flying times, locations, and summarize this document."}"
+
+TASK:
+1. Examine the attached document thoroughly.
+2. Determine what kind of document it is:
+   - "Flight Ticket / Boarding Pass"
+   - "Hotel Booking Voucher"
+   - "Train / Ferry Ticket"
+   - "Visa / Passport Document"
+   - "Travel Insurance"
+   - "Activity / Tour Confirmation"
+3. If it is a FLIGHT TICKET / BOARDING PASS:
+   - Extract:
+     * Airline name
+     * Flight number
+     * Departure city / airport code and name
+     * Exact Departure Date and Departure Time (WHEN IT STARTS FLYING)
+     * Arrival city / airport code and name
+     * Exact Arrival Date and Arrival Time (WHEN IT STOPS FLYING AND REACHES DESTINATION)
+     * Total flight duration
+     * Seat number, Boarding Gate, Terminal
+     * Baggage allowance (cabin and checked baggage in kg/pieces)
+     * Passenger full name
+     * Booking Reference / PNR / E-ticket number
+4. If it is a HOTEL RESERVATION:
+   - Hotel name, Check-in date & time, Check-out date & time, Address, Confirmation number, Guest name, Room type.
+5. In "summary": Write an articulate, beautifully formatted summary detailing all relevant times, flight status, baggage rules, and arrival guidance.
+6. In "answeredQuestion": Answer clearly any question the user asked about this document (e.g. luggage, gate, timings, layover).
+7. In "extractedTripContext": Extract origin, destination, departureDate, and returnDate if clearly visible in the ticket.
+
+Return ONLY a valid JSON object matching this schema:
+{
+  "documentType": "Flight Ticket / Boarding Pass",
+  "fileName": "${attachment.name}",
+  "summary": "Clear, informative summary of the document, explaining times, flying start/arrival, terminals, and practical tips for the traveler.",
+  "keyDetails": {
+    "Departure (Starts Flying)": "...",
+    "Arrival (Reaches Destination)": "...",
+    "Flight / Booking Ref": "...",
+    "Baggage Allowance": "...",
+    "Terminal & Gate": "..."
+  },
+  "flightInfo": {
+    "airline": "...",
+    "flightNumber": "...",
+    "departureCity": "...",
+    "departureTime": "...",
+    "departureDate": "...",
+    "arrivalCity": "...",
+    "arrivalTime": "...",
+    "arrivalDate": "...",
+    "duration": "...",
+    "seat": "...",
+    "gate": "...",
+    "terminal": "...",
+    "baggage": "...",
+    "passengerName": "...",
+    "bookingReference": "..."
+  },
+  "hotelInfo": {
+    "hotelName": "...",
+    "checkIn": "...",
+    "checkOut": "...",
+    "address": "...",
+    "confirmationNumber": "...",
+    "guestName": "..."
+  },
+  "extractedTripContext": {
+    "origin": null,
+    "destination": null,
+    "departureDate": null,
+    "returnDate": null
+  },
+  "answeredQuestion": "..."
+}`;
+
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType: attachment.mimeType,
+                data: cleanBase64,
+              },
+            },
+            {
+              text: prompt,
+            },
+          ],
+        },
+      ],
+      config: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const parsed = JSON.parse(response.text ?? "{}");
+    toolCall.status = "done";
+    toolCall.endedAt = Date.now();
+    toolCall.result = {
+      documentType: parsed.documentType ?? "Travel Document",
+      fileName: attachment.name,
+    };
+
+    const analysis: DocumentAnalysisResult = {
+      documentType: parsed.documentType ?? "Travel Document",
+      fileName: attachment.name,
+      summary: parsed.summary ?? "Document analyzed successfully.",
+      keyDetails: parsed.keyDetails ?? {},
+      flightInfo: parsed.flightInfo,
+      hotelInfo: parsed.hotelInfo,
+      answeredQuestion: parsed.answeredQuestion,
+    };
+
+    return {
+      analysis,
+      extractedContext: parsed.extractedTripContext ?? {},
+      toolCall,
+    };
+  } catch (err) {
+    console.error("[NOVA] executeDocumentAnalysis error:", err);
+    toolCall.status = "error";
+    toolCall.error = err instanceof Error ? err.message : "Failed to analyze document";
+    toolCall.endedAt = Date.now();
+
+    return {
+      analysis: {
+        documentType: "Document",
+        fileName: attachment.name,
+        summary: `Received "${attachment.name}". Please ensure the file is an image (PNG, JPG, WEBP) or PDF of a valid ticket, voucher, or travel document.`,
+        keyDetails: { Status: "Processed" },
+      },
+      extractedContext: {},
+      toolCall,
+    };
+  }
+}
+
+// ─── Response Generator ───────────────────────────────────────────────────────
 
 
 // ─── Itinerary Builder ────────────────────────────────────────────────────────
@@ -552,9 +720,9 @@ Return ONLY valid JSON array of strings.`;
 // â”€â”€â”€ Main Agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse> {
-  const { message, history, tripContext, mode } = request;
+  const { message, history, tripContext, mode, attachment } = request;
 
-  console.log(`[NOVA] Processing: "${message.slice(0, 80)}" | mode=${mode}`);
+  console.log(`[NOVA] Processing: "${message.slice(0, 80)}" | mode=${mode} | attachment=${attachment?.name ?? "none"}`);
 
   // 1. Detect intent and extract context
   const { intent, extractedContext } = await detectIntent(message, history, tripContext);
@@ -567,8 +735,26 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
   let toolResultsText = "";
   const allSources: Source[] = [];
 
-  // 2. Execute tools based on intent
+  // 2. Execute tools based on intent & attachments
   try {
+    // Process document attachment if present
+    if (attachment) {
+      const { analysis, extractedContext: docContext, toolCall } = await executeDocumentAnalysis(
+        attachment,
+        message,
+        updatedContext
+      );
+      toolCalls.push(toolCall);
+      combinedContent.documentAnalysis = analysis;
+
+      if (docContext.destination && !updatedContext.destination) updatedContext.destination = docContext.destination;
+      if (docContext.origin && !updatedContext.origin) updatedContext.origin = docContext.origin;
+      if (docContext.departureDate && !updatedContext.departureDate) updatedContext.departureDate = docContext.departureDate;
+      if (docContext.returnDate && !updatedContext.returnDate) updatedContext.returnDate = docContext.returnDate;
+
+      toolResultsText += `\nDocument Analysis for "${attachment.name}":\nType: ${analysis.documentType}\nSummary: ${analysis.summary}\nFlight Details: ${JSON.stringify(analysis.flightInfo ?? {})}\nKey Details: ${JSON.stringify(analysis.keyDetails)}`;
+    }
+
     if (intent === "HOTEL_SEARCH" && updatedContext.destination) {
       const { content, toolCall } = await executeHotelSearch(updatedContext);
       toolCalls.push(toolCall);
@@ -709,7 +895,8 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
   };
 
   // Determine the most specific content type
-  if (combinedContent.itinerary) finalContent.type = "itinerary_results";
+  if (combinedContent.documentAnalysis) finalContent.type = "document_analysis";
+  else if (combinedContent.itinerary) finalContent.type = "itinerary_results";
   else if (combinedContent.hotels?.length) finalContent.type = "hotel_results";
   else if (combinedContent.flights?.length) finalContent.type = "flight_results";
   else if (combinedContent.activities?.length) finalContent.type = "activity_results";

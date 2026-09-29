@@ -6,6 +6,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import { FileText } from "lucide-react";
 import type { Message } from "@/lib/nova/types";
 import { NovaMark } from "./NovaMark";
 import { ToolCallIndicator } from "./ToolCallIndicator";
@@ -18,6 +19,7 @@ import {
   BookingCard,
   SourceList,
   ItineraryCard,
+  DocumentAnalysisCard,
 } from "./ResultCards";
 import type { Itinerary } from "@/lib/nova/types";
 
@@ -60,8 +62,19 @@ export function MessageBubble({ message, isLast, isPlanConfirmed, onConfirmItine
   if (isUser) {
     return (
       <div className="animate-rise ml-auto max-w-[85%]">
-        <div className="rounded-2xl rounded-br-md bg-primary px-5 py-3.5 text-primary-foreground">
-          <p className="leading-relaxed">{content.text}</p>
+        <div className="rounded-2xl rounded-br-md bg-primary px-5 py-3.5 text-primary-foreground shadow-xs">
+          {message.attachment && (
+            <div className="mb-2.5 flex items-center gap-2.5 rounded-xl bg-primary-foreground/15 px-3 py-2 text-xs backdrop-blur-xs border border-primary-foreground/20">
+              <FileText className="size-4 shrink-0 text-primary-foreground" />
+              <div className="flex-1 min-w-0">
+                <p className="truncate font-semibold text-primary-foreground">{message.attachment.name}</p>
+                <p className="text-[10px] text-primary-foreground/75">
+                  {Math.round(message.attachment.sizeBytes / 1024)} KB · {message.attachment.mimeType}
+                </p>
+              </div>
+            </div>
+          )}
+          {content.text && <p className="leading-relaxed">{content.text}</p>}
         </div>
         <p className="mt-1 text-right text-[10px] text-muted-foreground">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -145,6 +158,11 @@ export function MessageBubble({ message, isLast, isPlanConfirmed, onConfirmItine
               <DestinationCard key={dest.id} destination={dest} />
             ))}
           </div>
+        )}
+
+        {/* Document Analysis / Ticket Intelligence */}
+        {content.documentAnalysis && (
+          <DocumentAnalysisCard analysis={content.documentAnalysis} />
         )}
 
         {/* Itinerary */}

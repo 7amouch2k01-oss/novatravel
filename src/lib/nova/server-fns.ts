@@ -41,14 +41,22 @@ const TripContextSchema = z.object({
 
 const HistoryItemSchema = z.object({
   role: z.enum(["user", "model"]),
-  text: z.string().max(4000),
+  text: z.string(),
+});
+
+const DocumentAttachmentSchema = z.object({
+  name: z.string().max(255),
+  mimeType: z.string().max(100),
+  base64: z.string(),
+  sizeBytes: z.number(),
 });
 
 const ChatRequestSchema = z.object({
-  message: z.string().min(1).max(2000),
-  history: z.array(HistoryItemSchema).max(20),
+  message: z.string(),
+  history: z.array(HistoryItemSchema).max(25),
   tripContext: TripContextSchema,
   mode: z.enum(["general", "travel"]),
+  attachment: DocumentAttachmentSchema.optional(),
 });
 
 // ─── Chat Server Function ─────────────────────────────────────────────────────
@@ -68,6 +76,7 @@ export const sendMessage = createServerFn({ method: "POST" })
       history: data.history,
       tripContext: data.tripContext,
       mode: data.mode,
+      ...(data.attachment ? { attachment: data.attachment } : {}),
     };
 
     const startTime = Date.now();

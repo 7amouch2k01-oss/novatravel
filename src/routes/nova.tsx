@@ -24,6 +24,13 @@ import {
   Clock,
   GripVertical,
   Coins,
+  Plus,
+  Paperclip,
+  FileText,
+  X,
+  MessageSquare,
+  ArrowRight,
+  UploadCloud,
 } from "lucide-react";
 import { NovaMark, Wordmark } from "@/components/nova/NovaMark";
 import { RouteMap } from "@/components/nova/RouteMap";
@@ -33,7 +40,7 @@ import { ToolCallIndicator } from "@/components/nova/ToolCallIndicator";
 import { ModeSwitcher } from "@/components/nova/ModeSwitcher";
 import { bySlug } from "@/lib/tunisia";
 import { useNovaChat, useNovaStatus } from "@/hooks/use-nova-chat";
-import type { Itinerary } from "@/lib/nova/types";
+import type { Itinerary, DocumentAttachment } from "@/lib/nova/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -163,13 +170,45 @@ function Workspace() {
     switchMode,
     updateTripContext,
     bottomRef,
+    chats,
+    activeChatId,
+    activeChat,
+    switchChat,
+    createNewTrip,
+    removeChat,
   } = useNovaChat({ initialMode: "travel" });
 
   const [input, setInput] = useState("");
+  const [selectedAttachment, setSelectedAttachment] = useState<DocumentAttachment | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [sidebarMapMode, setSidebarMapMode] = useState<"google" | "schematic">("google");
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(360);
   const [isDraggingResizer, setIsDraggingResizer] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File is too large. Please select a document or ticket under 10MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result as string;
+      const base64 = res.includes(",") ? res.split(",")[1] || "" : res;
+      setSelectedAttachment({
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        base64,
+        sizeBytes: file.size,
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   // Mouse move and mouse up listeners for smooth dragging resize
   useEffect(() => {
@@ -218,9 +257,10 @@ function Workspace() {
   };
 
   const handleSend = (text: string) => {
-    if (!text.trim() || isThinking) return;
-    sendMessage(text);
+    if ((!text.trim() && !selectedAttachment) || isThinking) return;
+    sendMessage(text, selectedAttachment ?? undefined);
     setInput("");
+    setSelectedAttachment(null);
     inputRef.current?.focus();
   };
 
@@ -259,40 +299,122 @@ function Workspace() {
           ))}
         </nav>
 
+        {/* New Chat Button */}
+        <div className="mt-6">
+          <Button
+            onClick={() => createNewTrip()}
+            className="w-full justify-start gap-2 rounded-xl bg-accent text-accent-foreground font-semibold shadow-sm hover:bg-accent/90"
+          >
+            <Plus className="size-4 shrink-0" />
+            <span>New Trip / Chat</span>
+          </Button>
+        </div>
+
+        {/* Multi-chat list */}
+        <div className="mt-5 flex-1 overflow-y-auto">
+          <div className="flex items-center justify-between px-1 mb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Your Chats & Trips
+            </span>
+            <span className="text-[10px] text-muted-foreground/80 font-mono">
+              {chats.length}
+            </span>
+          </div>
+
+          <div className="space-y-1.5 pr-1">
+            {chats.map((c) => {
+              const isActive = c.id === activeChatId;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => switchChat(c.id)}
+                  role="button"
+                  tabIndex={0}
+                  className={cn(
+                    "group relative flex flex-col gap-1 rounded-xl p-2.5 text-left transition-all border cursor-pointer",
+                    isActive
+                      ? "border-accent/40 bg-accent/10 shadow-xs"
+                      : "border-transparent bg-card/40 hover:bg-card hover:border-sidebar-border"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className={cn(
+                        "truncate text-xs font-semibold tracking-tight",
+                        isActive ? "text-accent-foreground font-bold" : "text-foreground/90"
+                      )}
+                      title={c.title}
+                    >
+                      {c.title}
+                    </span>
+
+                    {chats.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeChat(c.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-opacity"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span
+                      className={cn(
+                        "inline-flex items-center px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wider text-[9px]",
+                        c.status === "confirmed"
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold"
+                          : c.status === "planning"
+                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {c.status === "confirmed"
+                        ? "Confirmed"
+                        : c.status === "planning"
+                        ? "Planning"
+                        : "New"}
+                    </span>
+                    <span className="text-muted-foreground/60 text-[9px]">
+                      {new Date(c.updatedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Trip context display */}
         {tripContext.destination && (
-          <div className="mt-6 rounded-2xl border border-sidebar-border bg-card p-4">
+          <div className="mt-4 rounded-2xl border border-sidebar-border bg-card p-3.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Current trip
+              Current destination
             </p>
-            <p className="mt-2 font-display font-semibold">
-              {tripContext.destination}
+            <p className="mt-1 font-display text-sm font-semibold truncate">
+              {tripContext.origin ? `${tripContext.origin} → ` : ""}{tripContext.destination}
             </p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
               {tripContext.durationDays && (
-                <span>{tripContext.durationDays} days</span>
+                <span>{tripContext.durationDays}d</span>
               )}
               {tripContext.travelers && (
-                <span>{tripContext.travelers} travelers</span>
+                <span>· {tripContext.travelers} pers</span>
               )}
               {tripContext.budget && (
                 <span>
-                  {tripContext.currency ?? ""} {tripContext.budget.toLocaleString()} budget
+                  · {tripContext.currency ?? ""}{tripContext.budget.toLocaleString()}
                 </span>
               )}
             </div>
-          </div>
-        )}
-
-        {/* Empty state when no trip context yet */}
-        {!tripContext.destination && (
-          <div className="mt-auto rounded-2xl border border-dashed border-sidebar-border bg-card/50 p-4 text-center">
-            <p className="text-[11px] font-medium text-muted-foreground">
-              No active trip yet.
-            </p>
-            <p className="mt-1 text-[10px] text-muted-foreground/75">
-              Tell NOVA your dream destination, dates, or budget to start planning live.
-            </p>
           </div>
         )}
 
@@ -300,10 +422,10 @@ function Workspace() {
         {hasMessages && (
           <button
             onClick={clearConversation}
-            className="mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-destructive"
+            className="mt-3 flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
           >
-            <Trash2 className="size-4" />
-            Clear conversation
+            <Trash2 className="size-3.5" />
+            Clear active chat
           </button>
         )}
       </aside>
@@ -314,9 +436,27 @@ function Workspace() {
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
           <NovaMark className="size-9 shrink-0" spinning={isThinking} />
           <div className="min-w-0 flex-1">
-            <h1 className="font-display font-semibold">NOVA</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display font-semibold truncate text-sm sm:text-base">
+                {activeChat?.title || "NOVA"}
+              </h1>
+              {activeChat?.status && (
+                <span
+                  className={cn(
+                    "hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider",
+                    activeChat.status === "confirmed"
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : activeChat.status === "planning"
+                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {activeChat.status}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              {isThinking ? "Researching…" : mode === "travel" ? "Travel Agent" : "General AI"}
+              {isThinking ? "Researching & analyzing…" : mode === "travel" ? "Live AI Travel Planner" : "General AI"}
             </p>
           </div>
           <ModeSwitcher
@@ -385,27 +525,76 @@ function Workspace() {
               </div>
             )}
 
+            {/* Document attachment preview chip */}
+            {selectedAttachment && (
+              <div className="mb-2.5 flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground shrink-0">
+                    <FileText className="size-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-foreground">
+                      {selectedAttachment.name}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {Math.round(selectedAttachment.sizeBytes / 1024)} KB · Ready for AI Analysis
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAttachment(null)}
+                  className="rounded-md p-1 text-muted-foreground hover:bg-card hover:text-foreground"
+                  title="Remove attachment"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept=".pdf,.png,.jpg,.jpeg,.webp"
+              className="hidden"
+            />
+
             {/* Input form */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 handleSend(input);
               }}
-              className="flex items-center gap-2 rounded-2xl border border-input bg-card p-2 pl-4 focus-within:ring-2 focus-within:ring-ring"
+              className="flex items-center gap-2 rounded-2xl border border-input bg-card p-2 pl-3 focus-within:ring-2 focus-within:ring-ring"
             >
-              {mode === "general" ? (
-                <Globe className="size-4 shrink-0 text-muted-foreground" />
-              ) : (
-                <MapPin className="size-4 shrink-0 text-accent" />
-              )}
+              {/* Paperclip upload button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isThinking}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-xl transition-colors shrink-0",
+                  selectedAttachment
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                title="Upload plane ticket, booking voucher, or travel document (PDF or image)"
+              >
+                <Paperclip className="size-4" />
+              </button>
+
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
-                  mode === "travel"
-                    ? "Ask NOVA to find hotels, flights, plan a trip…"
-                    : "Ask NOVA anything…"
+                  selectedAttachment
+                    ? `Ask about ${selectedAttachment.name} or press send to analyze…`
+                    : mode === "travel"
+                    ? "Ask NOVA, or attach a ticket/voucher to extract flight times & details…"
+                    : "Ask NOVA anything, or upload a document…"
                 }
                 disabled={isThinking}
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-60"
@@ -413,7 +602,7 @@ function Workspace() {
               <Button
                 type="submit"
                 size="icon"
-                disabled={!input.trim() || isThinking}
+                disabled={(!input.trim() && !selectedAttachment) || isThinking}
                 className="size-9 rounded-xl"
               >
                 <ArrowUp className="size-4" />

@@ -20,6 +20,7 @@ import type {
   BookingConfirmation,
   Source,
   Itinerary,
+  DocumentAnalysisResult,
 } from "@/lib/nova/types";
 import {
   Star,
@@ -40,6 +41,12 @@ import {
   ArrowRight,
   Calendar,
   Check,
+  FileText,
+  Luggage,
+  Ticket,
+  ShieldCheck,
+  PlaneTakeoff,
+  PlaneLanding,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -554,6 +561,219 @@ export function ItineraryCard({
           >
             <Check className="size-3.5" /> Confirm Plan
           </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Document Intelligence Card ───────────────────────────────────────────────
+
+export function DocumentAnalysisCard({
+  analysis,
+}: {
+  analysis: DocumentAnalysisResult;
+}) {
+  const flight = analysis.flightInfo;
+  const hotel = analysis.hotelInfo;
+  const isFlight =
+    analysis.documentType.toLowerCase().includes("flight") ||
+    analysis.documentType.toLowerCase().includes("boarding") ||
+    analysis.documentType.toLowerCase().includes("ticket") ||
+    Boolean(flight?.departureTime || flight?.airline);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-soft">
+      {/* Document Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary/50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="grid size-8 place-items-center rounded-lg bg-accent/15 text-accent">
+            {isFlight ? <Ticket className="size-4" /> : <FileText className="size-4" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                AI DOCUMENT INTELLIGENCE
+              </span>
+              <Badge variant="outline" className="text-[10px] py-0 border-accent/30 text-accent">
+                {analysis.documentType}
+              </Badge>
+            </div>
+            <p className="text-sm font-semibold text-foreground truncate max-w-[280px]">
+              {analysis.fileName}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+          <ShieldCheck className="size-3.5" />
+          Verified & Analyzed
+        </div>
+      </div>
+
+      {/* Flight Boarding Pass Style Card if flight ticket */}
+      {isFlight && (flight?.departureCity || flight?.arrivalCity || flight?.departureTime) && (
+        <div className="border-b border-dashed border-border/80 bg-secondary/20 p-5">
+          {/* Airline & Flight No Header */}
+          <div className="flex items-center justify-between text-xs font-semibold">
+            <span className="text-accent flex items-center gap-1.5">
+              <Plane className="size-3.5" />
+              {flight.airline ?? "Commercial Airline"}
+            </span>
+            {flight.flightNumber && (
+              <span className="rounded-md bg-secondary px-2 py-0.5 font-mono text-muted-foreground">
+                Flight {flight.flightNumber}
+              </span>
+            )}
+          </div>
+
+          {/* Departure (starts flying) ➔ Arrival (stops flying / reaches destination) */}
+          <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            {/* Departure */}
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <PlaneTakeoff className="size-3 text-accent" /> Starts Flying
+              </p>
+              <p className="mt-1 font-display text-xl font-bold text-foreground">
+                {flight.departureTime ?? "—"}
+              </p>
+              <p className="text-sm font-semibold text-foreground/90">
+                {flight.departureCity ?? "Origin"}
+              </p>
+              {flight.departureDate && (
+                <p className="text-[11px] text-muted-foreground">{flight.departureDate}</p>
+              )}
+            </div>
+
+            {/* Flight Path Arrow / Duration */}
+            <div className="flex flex-col items-center px-2">
+              <span className="text-[10px] text-muted-foreground font-medium">
+                {flight.duration ?? "Direct"}
+              </span>
+              <div className="my-1 flex items-center">
+                <div className="h-0.5 w-8 bg-border sm:w-12" />
+                <ArrowRight className="size-4 text-accent -ml-1 shrink-0" />
+              </div>
+              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest">
+                En Route
+              </span>
+            </div>
+
+            {/* Arrival */}
+            <div className="text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-end gap-1">
+                <PlaneLanding className="size-3 text-accent" /> Reaches Destination
+              </p>
+              <p className="mt-1 font-display text-xl font-bold text-foreground">
+                {flight.arrivalTime ?? "—"}
+              </p>
+              <p className="text-sm font-semibold text-foreground/90">
+                {flight.arrivalCity ?? "Destination"}
+              </p>
+              {flight.arrivalDate && (
+                <p className="text-[11px] text-muted-foreground">{flight.arrivalDate}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Passenger, Seat, Gate, Terminal, Baggage */}
+          <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-card p-3 border border-border sm:grid-cols-4 text-xs">
+            {flight.passengerName && (
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">Passenger</span>
+                <p className="font-semibold truncate">{flight.passengerName}</p>
+              </div>
+            )}
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase">Seat & Gate</span>
+              <p className="font-semibold font-mono">
+                {flight.seat ? `Seat ${flight.seat}` : "TBD"} · {flight.gate ? `Gate ${flight.gate}` : "Gate TBA"}
+              </p>
+            </div>
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase flex items-center gap-1">
+                <Luggage className="size-3" /> Baggage
+              </span>
+              <p className="font-semibold truncate">
+                {flight.baggage ?? "Standard Allowance"}
+              </p>
+            </div>
+            {flight.bookingReference && (
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">PNR / Ref</span>
+                <p className="font-mono font-bold text-accent truncate">
+                  {flight.bookingReference}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Hotel Reservation details if applicable */}
+      {hotel && (hotel.hotelName || hotel.checkIn) && (
+        <div className="border-b border-border bg-secondary/20 p-5">
+          <div className="flex items-center gap-2">
+            <Hotel className="size-4 text-accent" />
+            <h4 className="font-semibold text-foreground">{hotel.hotelName ?? "Accommodation"}</h4>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase">Check-in</span>
+              <p className="font-semibold">{hotel.checkIn ?? "—"}</p>
+            </div>
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase">Check-out</span>
+              <p className="font-semibold">{hotel.checkOut ?? "—"}</p>
+            </div>
+            {hotel.confirmationNumber && (
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">Confirmation</span>
+                <p className="font-mono font-bold text-accent">{hotel.confirmationNumber}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Key Details Grid */}
+      {analysis.keyDetails && Object.keys(analysis.keyDetails).length > 0 && (
+        <div className="p-4 border-b border-border bg-card">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+            Key Extracted Parameters
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
+            {Object.entries(analysis.keyDetails).map(([key, val]) => (
+              <div key={key} className="flex items-baseline justify-between rounded-lg bg-secondary/50 px-2.5 py-1.5">
+                <span className="text-muted-foreground font-medium">{key}</span>
+                <span className="font-semibold text-foreground">{val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Summary Narrative */}
+      <div className="p-4 space-y-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Document Summary & Schedule
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+            {analysis.summary}
+          </p>
+        </div>
+
+        {/* Answered Question if user asked one */}
+        {analysis.answeredQuestion && (
+          <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 text-xs">
+            <span className="font-bold text-accent flex items-center gap-1.5">
+              <Info className="size-3.5" /> Answer to your query
+            </span>
+            <p className="mt-1 text-foreground leading-relaxed">
+              {analysis.answeredQuestion}
+            </p>
+          </div>
         )}
       </div>
     </div>
