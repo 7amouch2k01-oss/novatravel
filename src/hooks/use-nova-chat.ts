@@ -5,11 +5,12 @@
  * No AI logic runs here — all AI happens in server functions.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { sendMessage, checkApiStatus } from "@/lib/nova/server-fns";
 import type { Message, TripContext, AgentMode, ToolCall, AgentResponse } from "@/lib/nova/types";
 import { useQuery } from "@tanstack/react-query";
+import { getSavedTripContext, saveTripContext, clearSavedTripContext } from "@/lib/trip-storage";
 
 // ─── ID Generator ─────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export function useNovaChat(options: UseChatOptions = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [mode, setMode] = useState<AgentMode>(options.initialMode ?? "travel");
   const [tripContext, setTripContext] = useState<TripContext>(
-    options.initialContext ?? {}
+    () => options.initialContext ?? getSavedTripContext() ?? {}
   );
   const [liveToolCalls, setLiveToolCalls] = useState<ToolCall[]>([]);
   const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
@@ -117,6 +118,7 @@ export function useNovaChat(options: UseChatOptions = {}) {
 
       setMessages((prev) => [...prev, novaMsg]);
       setTripContext(response.updatedTripContext);
+      saveTripContext(response.updatedTripContext);
       setSuggestedFollowUps(response.suggestedFollowUps ?? []);
 
       // Clear live tool calls after a delay
@@ -152,6 +154,7 @@ export function useNovaChat(options: UseChatOptions = {}) {
   const clearConversation = useCallback(() => {
     setMessages([]);
     setTripContext({});
+    clearSavedTripContext();
     setSuggestedFollowUps([]);
     setLiveToolCalls([]);
   }, []);
@@ -176,10 +179,9 @@ export function useNovaChat(options: UseChatOptions = {}) {
 
   const updateTripContext = useCallback((updater: Partial<TripContext> | ((prev: TripContext) => TripContext)) => {
     setTripContext((prev) => {
-      if (typeof updater === "function") {
-        return updater(prev);
-      }
-      return { ...prev, ...updater };
+      const next = typeof updater === "function" ? updater(prev) : { ...prev, ...updater };
+      saveTripContext(next);
+      return next;
     });
   }, []);
 
