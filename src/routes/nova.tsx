@@ -1,19 +1,50 @@
+/**
+ * NOVA Workspace — Main Chat Interface
+ *
+ * Connects the NOVA AI agent to the UI.
+ * All AI logic runs server-side through createServerFn.
+ * This file contains ONLY UI and state management.
+ */
+
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { Home, Map, Compass, Heart, ArrowUp, Sparkle, Route as RouteIcon, Wallet, CalendarDays, Users, Search } from "lucide-react";
+import { useRef, useEffect, useState } from "react";
+import {
+  Home,
+  Map,
+  Compass,
+  Heart,
+  ArrowUp,
+  Sparkles,
+  Globe,
+  Trash2,
+  AlertCircle,
+  MapPin,
+} from "lucide-react";
 import { NovaMark, Wordmark } from "@/components/nova/NovaMark";
 import { RouteMap } from "@/components/nova/RouteMap";
 import { BudgetBar, budgetColors, fmt } from "@/components/nova/Budget";
-import { budget, budgetTotal, bySlug, novaReplies, tripStops } from "@/lib/tunisia";
+import { MessageBubble } from "@/components/nova/MessageBubble";
+import { ToolCallIndicator } from "@/components/nova/ToolCallIndicator";
+import { ModeSwitcher } from "@/components/nova/ModeSwitcher";
+import { budget, budgetTotal, bySlug, tripStops } from "@/lib/tunisia";
+import { useNovaChat, useNovaStatus } from "@/hooks/use-nova-chat";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/nova")({
   head: () => ({
     meta: [
-      { title: "NOVA Workspace — Plan your Tunisia trip | TUNITRAVEL" },
-      { name: "description", content: "Chat with NOVA to build, refine and budget a personalized Tunisia itinerary." },
+      { title: "NOVA Workspace — Your AI Travel Agent | TUNITRAVEL" },
+      {
+        name: "description",
+        content:
+          "Chat with NOVA — a real AI travel agent that searches the web, finds hotels, flights, and builds personalized itineraries.",
+      },
       { property: "og:title", content: "NOVA Workspace — TUNITRAVEL" },
-      { property: "og:description", content: "Your intelligent Tunisia travel agent at work." },
+      {
+        property: "og:description",
+        content: "Your intelligent AI travel agent at work.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -21,146 +52,454 @@ export const Route = createFileRoute("/nova")({
   component: Workspace,
 });
 
-type Msg = { role: "user" | "nova"; text: string; actions?: boolean };
+// ─── Quick action chips ────────────────────────────────────────────────────────
 
-const initial: Msg[] = [
-  { role: "user", text: "I'm visiting Tunisia for 5 days with my partner. We love culture, beaches and beautiful places, and our budget is around 2500 TND." },
-  { role: "nova", text: "Perfect. I'll build this around a relaxed pace, cultural experiences and coastal destinations while keeping the estimated budget close to 2,500 TND.", actions: true },
+const TRAVEL_CHIPS = [
+  "Find hotels in Rome for 2 people",
+  "Search flights Tunis → Paris",
+  "Best beaches in Tunisia",
+  "Build a 5-day Italy itinerary",
 ];
-const actions = [
-  { t: "Build itinerary", i: CalendarDays },
-  { t: "Find destinations", i: Search },
-  { t: "Optimize route", i: RouteIcon },
-  { t: "Check budget", i: Wallet },
+
+const GENERAL_CHIPS = [
+  "Explain how AI works",
+  "Help me write an email",
+  "What should I pack for Tunisia?",
+  "Translate: Bonjour je suis ici",
 ];
-const chips = ["Make it more relaxing", "Reduce the budget", "Add more beaches", "Add cultural experiences", "Show alternatives"];
+
+// ─── Welcome Screen ────────────────────────────────────────────────────────────
+
+function WelcomeScreen({
+  mode,
+  onSend,
+}: {
+  mode: "general" | "travel";
+  onSend: (text: string) => void;
+}) {
+  const chips = mode === "travel" ? TRAVEL_CHIPS : GENERAL_CHIPS;
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+      <NovaMark className="mx-auto size-16" spinning />
+      <h2 className="mt-6 font-display text-3xl font-semibold">
+        {mode === "travel"
+          ? "Where would you like to go?"
+          : "How can I help you today?"}
+      </h2>
+      <p className="mt-3 text-muted-foreground">
+        {mode === "travel"
+          ? "I can search for hotels, flights, activities, build itineraries, and research destinations using live web data."
+          : "Ask me anything — from technical questions to creative writing, languages, and everyday advice."}
+      </p>
+      <div className="mt-8 grid gap-3 sm:grid-cols-2">
+        {chips.map((c) => (
+          <button
+            key={c}
+            onClick={() => onSend(c)}
+            className="group flex items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left text-sm font-medium transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-soft"
+          >
+            <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-secondary text-accent">
+              {mode === "travel" ? (
+                <MapPin className="size-4" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+            </span>
+            {c}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── API Status Banner ────────────────────────────────────────────────────────
+
+function ApiBanner() {
+  const { data: status } = useNovaStatus();
+  if (!status || status.configured) return null;
+
+  return (
+    <div className="mx-6 my-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+      <div>
+        <strong>NOVA needs configuration.</strong>{" "}
+        Add <code className="rounded bg-amber-100 px-1">GEMINI_API_KEY=your-key</code> to a{" "}
+        <code className="rounded bg-amber-100 px-1">.env</code> file in the project root, then restart the server.
+        Get your key free at{" "}
+        <a
+          href="https://aistudio.google.com/app/apikey"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline"
+        >
+          Google AI Studio
+        </a>
+        .
+      </div>
+    </div>
+  );
+}
+
+// ─── Workspace ─────────────────────────────────────────────────────────────────
 
 function Workspace() {
-  const [msgs, setMsgs] = useState<Msg[]>(initial);
-  const [thinking, setThinking] = useState(false);
-  const [input, setInput] = useState("");
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [msgs, thinking]);
+  const {
+    messages,
+    mode,
+    tripContext,
+    liveToolCalls,
+    suggestedFollowUps,
+    isThinking,
+    sendMessage,
+    clearConversation,
+    switchMode,
+    bottomRef,
+  } = useNovaChat({ initialMode: "travel" });
 
-  const send = (text: string) => {
-    if (!text.trim() || thinking) return;
-    setMsgs((m) => [...m, { role: "user", text }]);
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleSend = (text: string) => {
+    if (!text.trim() || isThinking) return;
+    sendMessage(text);
     setInput("");
-    setThinking(true);
-    setTimeout(() => {
-      setMsgs((m) => [...m, { role: "nova", text: novaReplies[text] ?? "Noted. I'll factor that into your plan and keep the route and budget balanced — anything else you'd like to adjust?" }]);
-      setThinking(false);
-    }, 1400);
+    inputRef.current?.focus();
   };
+
+  // Auto-focus input
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const hasMessages = messages.length > 0;
 
   return (
     <div className="grid h-screen grid-cols-1 bg-background md:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_340px]">
-      {/* Left */}
+      {/* ── Left sidebar ─────────────────────────────────── */}
       <aside className="hidden flex-col border-r border-sidebar-border bg-sidebar p-5 md:flex">
-        <Link to="/" className="flex items-center gap-2"><NovaMark className="size-7" /><Wordmark className="text-base" /></Link>
+        <Link to="/" className="flex items-center gap-2">
+          <NovaMark className="size-7" />
+          <Wordmark className="text-base" />
+        </Link>
+
         <nav className="mt-8 space-y-1 text-sm font-medium">
-          {[{ to: "/", l: "Home", i: Home }, { to: "/itinerary", l: "My Trip", i: Map }, { to: "/explore", l: "Explore", i: Compass }, { to: "/explore", l: "Saved Places", i: Heart }].map(({ to, l, i: I }) => (
-            <Link key={l} to={to} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"><I className="size-4" />{l}</Link>
+          {[
+            { to: "/", l: "Home", i: Home },
+            { to: "/itinerary", l: "My Trip", i: Map },
+            { to: "/explore", l: "Explore", i: Compass },
+            { to: "/explore", l: "Saved Places", i: Heart },
+          ].map(({ to, l, i: I }) => (
+            <Link
+              key={l}
+              to={to}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            >
+              <I className="size-4" />
+              {l}
+            </Link>
           ))}
         </nav>
-        <div className="mt-auto rounded-2xl border border-sidebar-border bg-card p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Current trip</p>
-          <p className="mt-2 font-display font-semibold">Tunisia Adventure</p>
-          <div className="mt-2 flex gap-3 text-xs text-muted-foreground"><span className="flex items-center gap-1"><CalendarDays className="size-3" />5 days</span><span className="flex items-center gap-1"><Users className="size-3" />2 travelers</span></div>
-          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-[68%] rounded-full bg-accent" /></div>
-          <p className="mt-1.5 text-xs text-muted-foreground">Plan 68% complete</p>
-        </div>
+
+        {/* Trip context display */}
+        {tripContext.destination && (
+          <div className="mt-6 rounded-2xl border border-sidebar-border bg-card p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Current trip
+            </p>
+            <p className="mt-2 font-display font-semibold">
+              {tripContext.destination}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              {tripContext.durationDays && (
+                <span>{tripContext.durationDays} days</span>
+              )}
+              {tripContext.travelers && (
+                <span>{tripContext.travelers} travelers</span>
+              )}
+              {tripContext.budget && (
+                <span>
+                  {tripContext.currency ?? ""} {tripContext.budget.toLocaleString()} budget
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Default trip display when no dynamic context */}
+        {!tripContext.destination && (
+          <div className="mt-auto rounded-2xl border border-sidebar-border bg-card p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Sample trip
+            </p>
+            <p className="mt-2 font-display font-semibold">Tunisia Adventure</p>
+            <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+              <span>5 days</span>
+              <span>2 travelers</span>
+            </div>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full w-[68%] rounded-full bg-accent" />
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">Plan 68% complete</p>
+          </div>
+        )}
+
+        {/* Clear conversation */}
+        {hasMessages && (
+          <button
+            onClick={clearConversation}
+            className="mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
+            Clear conversation
+          </button>
+        )}
       </aside>
 
-      {/* Center */}
+      {/* ── Center: chat ─────────────────────────────────── */}
       <main className="flex min-h-0 flex-col">
-        <header className="flex items-center gap-3 border-b border-border px-6 py-4">
-          <NovaMark className="size-9" spinning={thinking} />
-          <div>
+        {/* Header */}
+        <header className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <NovaMark className="size-9 shrink-0" spinning={isThinking} />
+          <div className="min-w-0 flex-1">
             <h1 className="font-display font-semibold">NOVA</h1>
-            <p className="text-xs text-muted-foreground">Your intelligent Tunisia travel agent</p>
+            <p className="text-xs text-muted-foreground">
+              {isThinking ? "Researching…" : mode === "travel" ? "Travel Agent" : "General AI"}
+            </p>
           </div>
-          <span className="ml-auto hidden rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground sm:block">Culture · Beaches · Relaxed pace</span>
+          <ModeSwitcher
+            mode={mode}
+            onSwitch={switchMode}
+            className="hidden sm:flex"
+          />
         </header>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-8">
+        {/* API Banner */}
+        <ApiBanner />
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-2xl space-y-6">
-            {msgs.map((m, i) => m.role === "user" ? (
-              <div key={i} className="animate-rise ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-primary px-5 py-3.5 text-primary-foreground">{m.text}</div>
+            {!hasMessages ? (
+              <WelcomeScreen mode={mode} onSend={handleSend} />
             ) : (
-              <div key={i} className="animate-rise flex gap-3">
-                <NovaMark className="mt-0.5 size-7 shrink-0" />
+              messages.map((m, i) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  isLast={i === messages.length - 1}
+                />
+              ))
+            )}
+
+            {/* Live tool calls */}
+            {isThinking && liveToolCalls.length > 0 && (
+              <div className="flex gap-3">
+                <NovaMark className="mt-0.5 size-8 shrink-0" spinning />
                 <div className="flex-1">
-                  <p className="leading-relaxed">{m.text}</p>
-                  {m.actions && (
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      {actions.map(({ t, i: I }) => (
-                        <button key={t} onClick={() => send(t)} className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left text-sm font-semibold transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-soft">
-                          <span className="grid size-8 place-items-center rounded-lg bg-secondary text-accent"><I className="size-4" /></span>{t}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <ToolCallIndicator toolCalls={liveToolCalls} />
                 </div>
               </div>
-            ))}
-            {thinking && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <NovaMark className="size-7" spinning />
-                <span>NOVA is weighing your preferences</span>
-                <span className="flex gap-1">{[0, 1, 2].map((d) => <span key={d} className="think-dot size-1.5 rounded-full bg-accent" style={{ animationDelay: `${d * 0.15}s` }} />)}</span>
-              </div>
             )}
-            <div ref={end} />
+
+            {/* Scroll anchor */}
+            <div ref={bottomRef} />
           </div>
         </div>
 
-        <div className="border-t border-border px-6 py-4">
+        {/* Input area */}
+        <div className="border-t border-border px-4 py-4 sm:px-6">
           <div className="mx-auto max-w-2xl">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {chips.map((c) => (
-                <button key={c} onClick={() => send(c)} className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-terracotta hover:text-terracotta"><Sparkle className="size-3" />{c}</button>
-              ))}
+            {/* Mode switcher (mobile) */}
+            <div className="mb-3 flex items-center justify-between sm:hidden">
+              <ModeSwitcher mode={mode} onSwitch={switchMode} />
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="flex items-center gap-2 rounded-2xl border border-input bg-card p-2 pl-4 focus-within:ring-2 focus-within:ring-ring">
-              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Tell NOVA what you'd like to change…" className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
-              <button type="submit" disabled={!input.trim() || thinking} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40"><ArrowUp className="size-4" /></button>
+
+            {/* Follow-up chips */}
+            {suggestedFollowUps.length > 0 && !isThinking && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {suggestedFollowUps.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => handleSend(c)}
+                    className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent"
+                  >
+                    <Sparkles className="size-3" />
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Input form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend(input);
+              }}
+              className="flex items-center gap-2 rounded-2xl border border-input bg-card p-2 pl-4 focus-within:ring-2 focus-within:ring-ring"
+            >
+              {mode === "general" ? (
+                <Globe className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <MapPin className="size-4 shrink-0 text-accent" />
+              )}
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  mode === "travel"
+                    ? "Ask NOVA to find hotels, flights, plan a trip…"
+                    : "Ask NOVA anything…"
+                }
+                disabled={isThinking}
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-60"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!input.trim() || isThinking}
+                className="size-9 rounded-xl"
+              >
+                <ArrowUp className="size-4" />
+              </Button>
             </form>
+
+            <p className="mt-2 text-center text-[10px] text-muted-foreground">
+              {mode === "travel"
+                ? "NOVA uses live web research · Prices are estimates unless labeled verified"
+                : "NOVA can use web search for current information"}
+            </p>
           </div>
         </div>
       </main>
 
-      {/* Right */}
+      {/* ── Right panel: trip summary ─────────────────────── */}
       <aside className="hidden overflow-y-auto border-l border-border bg-card p-6 xl:block">
         <h2 className="font-display text-xl font-semibold">Your trip</h2>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-          {[["5", "days"], ["2", "travelers"], ["2,500", "TND budget"]].map(([a, b]) => (
-            <div key={b} className="rounded-xl bg-secondary p-3"><p className="font-display text-lg font-semibold">{a}</p><p className="text-[11px] text-muted-foreground">{b}</p></div>
-          ))}
-        </div>
-        <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Destinations</p>
-        <ul className="mt-3 space-y-2">
-          {tripStops.map((s, i) => { const d = bySlug(s)!; return (
-            <li key={s}><Link to="/explore/$slug" params={{ slug: s }} className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-secondary">
-              <img src={d.image} alt="" className="size-10 rounded-lg object-cover" loading="lazy" />
-              <div className="flex-1"><p className="text-sm font-semibold">{d.name}</p><p className="text-xs text-muted-foreground">{d.duration}</p></div>
-              <span className="grid size-6 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{i + 1}</span>
-            </Link></li>
-          ); })}
-        </ul>
-        <RouteMap stops={tripStops} compact className="mt-4 h-44" />
-        <div className="mt-7 flex items-baseline justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Estimated budget</p>
-          <span className="rounded-full bg-sand/50 px-2 py-0.5 text-[10px] font-semibold">Estimated</span>
-        </div>
-        <div className="mt-3"><BudgetBar /></div>
-        <ul className="mt-4 space-y-2 text-sm">
-          {budget.map((b, i) => (
-            <li key={b.label} className="flex items-center gap-2"><span className="size-2 rounded-full" style={{ background: budgetColors[i] }} />{b.label}<span className="ml-auto font-medium">{fmt(b.value)} TND</span></li>
-          ))}
-        </ul>
-        <div className={cn("mt-4 flex items-baseline justify-between border-t border-border pt-4")}><span className="text-sm font-semibold">Total</span><span className="font-display text-2xl font-semibold">~{fmt(budgetTotal)} TND</span></div>
-        <p className="mt-2 text-xs text-muted-foreground">AI estimate — actual prices may vary.</p>
+
+        {tripContext.destination ? (
+          <>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+              {[
+                [tripContext.durationDays ?? "—", "days"],
+                [tripContext.travelers ?? "—", "travelers"],
+                ...(tripContext.budget
+                  ? [[`${tripContext.budget.toLocaleString()}`, tripContext.currency ?? "budget"]]
+                  : []),
+              ].map(([a, b]) => (
+                <div key={String(b)} className="rounded-xl bg-secondary p-3">
+                  <p className="font-display text-lg font-semibold">{a}</p>
+                  <p className="text-[11px] text-muted-foreground">{b}</p>
+                </div>
+              ))}
+            </div>
+
+            {tripContext.interests && tripContext.interests.length > 0 && (
+              <>
+                <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Interests
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tripContext.interests.map((i) => (
+                    <span
+                      key={i}
+                      className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
+                    >
+                      {i}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Default trip display */}
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+              {[
+                ["5", "days"],
+                ["2", "travelers"],
+                ["2,500", "TND budget"],
+              ].map(([a, b]) => (
+                <div key={b} className="rounded-xl bg-secondary p-3">
+                  <p className="font-display text-lg font-semibold">{a}</p>
+                  <p className="text-[11px] text-muted-foreground">{b}</p>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Destinations
+            </p>
+            <ul className="mt-3 space-y-2">
+              {tripStops.map((s, i) => {
+                const d = bySlug(s)!;
+                return (
+                  <li key={s}>
+                    <Link
+                      to="/explore/$slug"
+                      params={{ slug: s }}
+                      className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-secondary"
+                    >
+                      <img
+                        src={d.image}
+                        alt=""
+                        className="size-10 rounded-lg object-cover"
+                        loading="lazy"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold">{d.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {d.duration}
+                        </p>
+                      </div>
+                      <span className="grid size-6 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                        {i + 1}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <RouteMap stops={tripStops} compact className="mt-4 h-44" />
+
+            <div className="mt-7 flex items-baseline justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Estimated budget
+              </p>
+              <span className="rounded-full bg-sand/50 px-2 py-0.5 text-[10px] font-semibold">
+                Estimated
+              </span>
+            </div>
+            <div className="mt-3">
+              <BudgetBar />
+            </div>
+            <ul className="mt-4 space-y-2 text-sm">
+              {budget.map((b, i) => (
+                <li key={b.label} className="flex items-center gap-2">
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ background: budgetColors[i] }}
+                  />
+                  {b.label}
+                  <span className="ml-auto font-medium">{fmt(b.value)} TND</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="font-display text-2xl font-semibold">
+                ~{fmt(budgetTotal)} TND
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              AI estimate — actual prices may vary.
+            </p>
+          </>
+        )}
       </aside>
     </div>
   );
