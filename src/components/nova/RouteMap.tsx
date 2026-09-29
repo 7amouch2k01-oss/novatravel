@@ -56,39 +56,69 @@ export function RouteMap({ stops, className, compact = false, activeDestination 
 
   const d = uniquePts.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ");
 
-  const active = activeDestination ? resolveDestination(activeDestination) : null;
+  const hasStops = uniquePts.length > 0;
 
   return (
-    <div className={cn("relative overflow-hidden rounded-2xl border border-border bg-secondary zellige", className)}>
-      <svg viewBox="0 0 100 90" className="h-full w-full select-none">
+    <div className={cn("relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-secondary/60 to-secondary zellige", className)}>
+      <svg viewBox="0 0 100 92" className="h-full w-full select-none">
+        <defs>
+          <linearGradient id="tunisiaLandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="hsl(var(--card))" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="hsl(var(--secondary))" stopOpacity="0.9" />
+          </linearGradient>
+          <filter id="mapGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="hsl(var(--accent))" floodOpacity="0.3" />
+          </filter>
+        </defs>
+
         {/* Tunisia stylized land boundary */}
         <path
           d="M48 4 L64 5 L66 14 L62 20 L66 30 L68 42 L74 56 L76 68 L66 72 L58 86 L44 88 L36 76 L24 66 L22 50 L30 40 L36 26 L40 12 Z"
-          className="fill-card stroke-border transition-colors"
-          strokeWidth="0.6"
+          fill="url(#tunisiaLandGradient)"
+          className="stroke-border/80 transition-colors"
+          strokeWidth="0.8"
         />
 
         {/* Sea labeling */}
-        <text x="82" y="28" className="fill-accent font-medium tracking-wider" fontSize="2.8" opacity="0.6">
+        <text x="80" y="26" className="fill-accent/70 font-semibold tracking-wider select-none" fontSize="2.6">
           Mediterranean
         </text>
+        <text x="80" y="30" className="fill-muted-foreground/50 text-[2px]" fontSize="2">
+          Gulf of Tunis
+        </text>
 
-        {/* Animated Route Path */}
+        {/* Sahara labeling */}
+        <text x="28" y="76" className="fill-muted-foreground/40 italic font-display" fontSize="2.8">
+          Sahara Desert
+        </text>
+
+        {/* Ghost reference dots for all known regions when no stops are active */}
+        {!hasStops &&
+          destinations.map((d) => (
+            <g key={`ghost-${d.slug}`} opacity="0.35" className="transition-opacity hover:opacity-80">
+              <circle cx={d.x} cy={d.y} r="1.4" className="fill-muted-foreground" />
+              <text x={d.x + 2.5} y={d.y + 0.8} fontSize="2.2" className="fill-muted-foreground/80 font-medium">
+                {d.name}
+              </text>
+            </g>
+          ))}
+
+        {/* Animated Route Path connecting active stops */}
         {uniquePts.length > 1 && (
           <path
             d={d}
             fill="none"
             className="route-draw stroke-accent transition-all duration-700"
-            strokeWidth="1.2"
+            strokeWidth="1.4"
             strokeDasharray="4 2"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         )}
 
-        {/* Destination Markers */}
+        {/* Active Destination Markers */}
         {uniquePts.map((p, i) => {
-          const isActive = active?.slug === p.slug || selectedPoint === p.slug;
+          const isActive = i === 0 || selectedPoint === p.slug;
           return (
             <g
               key={`${p.slug}-${i}`}
@@ -102,19 +132,20 @@ export function RouteMap({ stops, className, compact = false, activeDestination 
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r="5"
-                  className="fill-accent/25 animate-ping"
+                  r="5.5"
+                  className="fill-accent/30 animate-ping"
                 />
               )}
 
-              {/* Marker pin circle */}
+              {/* Marker pin circle with elevation filter */}
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={isActive ? "3.2" : "2.4"}
+                r={isActive ? "3.6" : "2.8"}
+                filter="url(#mapGlow)"
                 className={cn(
                   "transition-all duration-300",
-                  isActive ? "fill-accent stroke-background stroke-1" : "fill-primary"
+                  isActive ? "fill-accent stroke-background stroke-2" : "fill-primary stroke-background stroke-1"
                 )}
               />
 
@@ -129,37 +160,48 @@ export function RouteMap({ stops, className, compact = false, activeDestination 
                 {i + 1}
               </text>
 
-              {/* Name label */}
-              {!compact && (
-                <text
-                  x={p.x + 3.6}
-                  y={p.y + 1}
-                  fontSize="2.8"
+              {/* Smart Name Tag */}
+              <g transform={`translate(${p.x + 3.8}, ${p.y - 3})`}>
+                <rect
+                  x="0"
+                  y="0"
+                  width={p.name.length * 2.1 + 4}
+                  height="6"
+                  rx="1.5"
                   className={cn(
-                    "font-semibold transition-colors duration-200 pointer-events-none",
-                    isActive ? "fill-accent font-bold" : "fill-foreground"
+                    "transition-colors",
+                    isActive ? "fill-accent text-accent-foreground" : "fill-background/90 stroke-border/70 stroke-[0.3]"
+                  )}
+                />
+                <text
+                  x="2"
+                  y="4.2"
+                  fontSize="2.6"
+                  className={cn(
+                    "font-bold transition-colors pointer-events-none",
+                    isActive ? "fill-accent-foreground font-extrabold" : "fill-foreground"
                   )}
                 >
                   {p.name}
                 </text>
-              )}
+              </g>
             </g>
           );
         })}
       </svg>
 
       {/* Floating indicator info */}
-      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between rounded-lg bg-background/85 px-2.5 py-1 text-[11px] backdrop-blur-sm border border-border/50">
-        <span className="flex items-center gap-1 font-medium text-foreground">
-          <Navigation className={cn("size-3 text-accent", uniquePts.length > 0 && "animate-pulse")} />
-          {uniquePts.length > 0
-            ? `${uniquePts.length} Live Stop${uniquePts.length === 1 ? "" : "s"}`
-            : "No stops added yet"}
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between rounded-xl bg-background/90 px-3 py-1.5 text-xs backdrop-blur-md border border-border/80 shadow-xs">
+        <span className="flex items-center gap-1.5 font-medium text-foreground">
+          <Navigation className={cn("size-3.5 text-accent", hasStops && "animate-pulse")} />
+          {hasStops
+            ? `${uniquePts.length} Active Stop${uniquePts.length === 1 ? "" : "s"}`
+            : "Live Tunisia Navigator"}
         </span>
-        <span className="text-muted-foreground truncate max-w-[170px]">
-          {uniquePts.length > 0
+        <span className="text-[11px] text-muted-foreground truncate max-w-[190px]">
+          {hasStops
             ? uniquePts.map((p) => p.name).join(" → ")
-            : "Awaiting your choices"}
+            : "Select cities in NOVA to map"}
         </span>
       </div>
     </div>
