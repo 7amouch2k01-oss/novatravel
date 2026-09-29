@@ -106,6 +106,7 @@ Return JSON with:
   "extractedContext": {
     only include fields explicitly mentioned or strongly implied:
     "destination": string or null,
+    "stops": array of destination/city strings mentioned or visited in the trip e.g. ["Tunis", "Carthage", "Sidi Bou Said"] or null,
     "origin": string or null,
     "departureDate": "YYYY-MM-DD or relative like next month" or null,
     "returnDate": "YYYY-MM-DD" or null,
@@ -395,13 +396,30 @@ async function buildItinerary(
   const dest = context.destination ?? "Tunisia";
   const travelers = context.travelers ?? 2;
   const currency = context.currency ?? "TND";
+  const estimatedRealisticBase =
+    currency === "TND"
+      ? days * travelers * 220
+      : currency === "EUR"
+      ? days * travelers * 65
+      : currency === "USD"
+      ? days * travelers * 70
+      : days * travelers * 220;
 
-  const prompt = `You are a professional travel planner. Create a detailed ${days}-day itinerary for ${travelers} traveler(s) visiting ${dest}.
+  const targetBudget = context.budget && context.budget > (days * travelers * 20)
+    ? context.budget
+    : estimatedRealisticBase;
 
-Available activities data:
+  const prompt = `You are a senior professional travel planner. Create an authentic, highly detailed ${days}-day itinerary for ${travelers} traveler(s) visiting ${dest}.
+
+Available activities research:
 ${JSON.stringify(activities.slice(0, 10), null, 2)}
 
-Return a valid JSON object (no markdown, no extra text):
+BUDGET INSTRUCTIONS:
+- Total trip budget must be realistic and complete: around ${targetBudget} ${currency} for ${days} days and ${travelers} traveler(s).
+- It must account for accommodation, meals, transport, and admissions for all ${travelers} travelers across all ${days} days.
+- Do NOT underestimate with a tiny number like 200 or 500 TND for a multi-day multi-person trip.
+
+Return a valid JSON object (no markdown formatting, no backticks, ONLY raw JSON):
 {
   "id": "itin-${Date.now()}",
   "title": "short catchy title string",
@@ -409,29 +427,29 @@ Return a valid JSON object (no markdown, no extra text):
   "days": [
     {
       "day": 1,
-      "city": "city/area name",
-      "theme": "Day theme e.g. Historical Discovery",
+      "city": "city or region name",
+      "theme": "Day theme e.g. Historical Discovery & Medina",
       "items": [
         {
           "slot": "morning",
           "time": "09:00",
-          "place": "place name",
+          "place": "specific place or monument name",
           "duration": "2 hours",
           "description": "what to do there",
-          "estimatedCost": 30,
+          "estimatedCost": 35,
           "currency": "${currency}",
-          "transport": "by taxi"
+          "transport": "taxi / walk"
         }
       ]
     }
   ],
-  "totalEstimatedCost": 500,
+  "totalEstimatedCost": ${targetBudget},
   "currency": "${currency}",
   "travelers": ${travelers},
   "notes": "practical tips"
 }
 
-Build exactly ${days} days. Make it realistic, culturally rich, and engaging. Return ONLY the JSON object.`;
+Build exactly ${days} days. Every day must have realistic places, morning/afternoon/evening slots. Return ONLY the JSON object.`;
 
   try {
     const response = await ai.models.generateContent({

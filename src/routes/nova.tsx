@@ -22,6 +22,8 @@ import {
   CheckCircle2,
   Calendar,
   Clock,
+  GripVertical,
+  Coins,
 } from "lucide-react";
 import { NovaMark, Wordmark } from "@/components/nova/NovaMark";
 import { RouteMap } from "@/components/nova/RouteMap";
@@ -165,7 +167,34 @@ function Workspace() {
 
   const [input, setInput] = useState("");
   const [sidebarMapMode, setSidebarMapMode] = useState<"google" | "schematic">("google");
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(360);
+  const [isDraggingResizer, setIsDraggingResizer] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Mouse move and mouse up listeners for smooth dragging resize
+  useEffect(() => {
+    if (!isDraggingResizer) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Panel width = window width - mouse X position
+      const newWidth = window.innerWidth - e.clientX;
+      // Clamp between min 280px and max 640px or 50% of viewport
+      const maxAllowed = Math.min(680, Math.floor(window.innerWidth * 0.5));
+      const clamped = Math.max(280, Math.min(newWidth, maxAllowed));
+      setRightPanelWidth(clamped);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingResizer(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingResizer]);
 
   const handleConfirmItinerary = (itinerary: Itinerary) => {
     const extractedStops = Array.from(
@@ -203,9 +232,9 @@ function Workspace() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="grid h-screen grid-cols-1 bg-background md:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_340px]">
+    <div className="flex h-screen w-full overflow-hidden bg-background">
       {/* ── Left sidebar ─────────────────────────────────── */}
-      <aside className="hidden flex-col border-r border-sidebar-border bg-sidebar p-5 md:flex">
+      <aside className="hidden w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-5 md:flex">
         <Link to="/" className="flex items-center gap-2">
           <NovaMark className="size-7" />
           <Wordmark className="text-base" />
@@ -215,6 +244,7 @@ function Workspace() {
           {[
             { to: "/", l: "Home", i: Home },
             { to: "/itinerary", l: "My Trip", i: Map },
+            { to: "/budget", l: "Budget", i: Coins },
             { to: "/explore", l: "Explore", i: Compass },
             { to: "/explore", l: "Saved Places", i: Heart },
           ].map(({ to, l, i: I }) => (
@@ -279,7 +309,7 @@ function Workspace() {
       </aside>
 
       {/* ── Center: chat ─────────────────────────────────── */}
-      <main className="flex min-h-0 flex-col">
+      <main className="flex flex-1 min-w-0 min-h-0 flex-col">
         {/* Header */}
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
           <NovaMark className="size-9 shrink-0" spinning={isThinking} />
@@ -399,10 +429,31 @@ function Workspace() {
         </div>
       </main>
 
-      {/* ── Right panel: trip summary ─────────────────────── */}
-      <aside className="hidden overflow-y-auto border-l border-border bg-card p-6 xl:block">
+      {/* ── Draggable Splitter Handle for 'Your trip' panel ── */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setIsDraggingResizer(true);
+        }}
+        title="Drag to resize 'Your trip' panel"
+        className={cn(
+          "hidden xl:flex w-2 shrink-0 cursor-col-resize items-center justify-center transition-colors select-none group",
+          isDraggingResizer ? "bg-accent" : "hover:bg-accent/40 bg-border/60"
+        )}
+      >
+        <div className="h-8 w-1 rounded-full bg-muted-foreground/40 group-hover:bg-accent transition-colors" />
+      </div>
+
+      {/* ── Right panel: trip summary (Dynamically Resizable) ── */}
+      <aside
+        style={{ width: `${rightPanelWidth}px` }}
+        className="hidden shrink-0 overflow-y-auto border-l border-border bg-card p-6 xl:block select-text"
+      >
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-xl font-semibold">Your trip</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-xl font-semibold">Your trip</h2>
+            <span className="text-[10px] text-muted-foreground/70 font-mono">(drag edge to resize)</span>
+          </div>
           {tripContext.isPlanConfirmed && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
               <CheckCircle2 className="size-3" />
@@ -425,16 +476,20 @@ function Workspace() {
             </p>
             <p className="text-[11px] text-muted-foreground">travelers</p>
           </div>
-          <div className="rounded-xl bg-secondary p-3">
-            <p className="font-display text-lg font-semibold">
+          <Link
+            to="/budget"
+            title="Click to view detailed budget breakdown and live currency conversion"
+            className="group rounded-xl bg-secondary p-3 transition-colors hover:bg-accent/10 border border-transparent hover:border-accent/30 flex flex-col justify-center cursor-pointer"
+          >
+            <p className="font-display text-lg font-semibold group-hover:text-accent transition-colors">
               {tripContext.budget
                 ? `${tripContext.budget.toLocaleString()}`
                 : "—"}
             </p>
-            <p className="text-[11px] text-muted-foreground">
-              {tripContext.currency ?? "TND"} budget
+            <p className="text-[11px] text-muted-foreground group-hover:text-accent/90 transition-colors">
+              {tripContext.currency ?? "TND"} budget ↗
             </p>
-          </div>
+          </Link>
         </div>
 
         {/* Interests if any */}

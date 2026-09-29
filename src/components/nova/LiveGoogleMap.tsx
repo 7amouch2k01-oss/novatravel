@@ -94,26 +94,26 @@ export function LiveGoogleMap({
   return (
     <div className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-soft", className)}>
       {/* Map Header */}
-      <div className="flex items-center justify-between border-b border-border bg-secondary/50 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <MapPin className="size-4 text-accent animate-bounce" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary/50 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <MapPin className="size-3.5 text-accent shrink-0 animate-bounce" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground truncate sm:text-xs">
             {title}
           </span>
           {uniqueStops.length > 0 && (
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
-              {uniqueStops.length} Real Stop{uniqueStops.length > 1 ? "s" : ""}
+            <span className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent sm:text-[10px]">
+              {uniqueStops.length} Stop{uniqueStops.length > 1 ? "s" : ""}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0">
           {/* Toggle Satellite / Roadmap */}
           <button
             type="button"
             onClick={() => setMapType((prev) => (prev === "m" ? "k" : "m"))}
             title={mapType === "m" ? "Switch to Satellite" : "Switch to Roadmap"}
-            className="flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground sm:text-[11px] sm:py-1"
           >
             <Layers className="size-3" />
             {mapType === "m" ? "Satellite" : "Map"}
@@ -124,11 +124,11 @@ export function LiveGoogleMap({
             href={googleDirectionsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded-lg bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/20"
+            className="flex items-center gap-1 rounded-lg bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/20 sm:text-[11px] sm:px-2.5 sm:py-1"
           >
             <Navigation className="size-3" />
             Directions
-            <ExternalLink className="size-3" />
+            <ExternalLink className="size-2.5 sm:size-3" />
           </a>
         </div>
       </div>
@@ -145,25 +145,25 @@ export function LiveGoogleMap({
         />
 
         {/* Live overlay badge for current stops */}
-        <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-background/90 p-2.5 text-xs backdrop-blur border border-border/80">
-          <div className="flex items-center gap-1.5 font-medium text-foreground">
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Active Destinations:</span>
+        <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-col gap-1.5 rounded-xl bg-background/90 p-2 text-xs backdrop-blur-md border border-border/80 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-1.5 font-medium text-foreground text-[11px]">
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="shrink-0 font-semibold">Active Destinations:</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1">
             {uniqueStops.length > 0 ? (
               uniqueStops.map((stop, i) => (
                 <span
                   key={stop.slug}
-                  className="rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground"
+                  className="rounded-md bg-secondary/80 px-1.5 py-0.5 text-[10px] font-medium text-foreground border border-border/50"
                 >
                   <strong className="text-accent">{i + 1}.</strong> {stop.name}
                 </span>
               ))
             ) : (
-              <span className="text-[11px] text-muted-foreground">
-                No destinations chosen yet — select or confirm a plan in NOVA!
+              <span className="text-[10px] text-muted-foreground">
+                Awaiting destination choices
               </span>
             )}
           </div>
