@@ -10,7 +10,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { WebSearchProvider, WebSearchResult } from "../providers";
 
-const MODEL = "gemini-3.5-flash";
+const MODEL = "gemini-3.5-flash-lite";
 
 export class GeminiSearchProvider implements WebSearchProvider {
   readonly name = "Gemini Search (Google Grounding)";

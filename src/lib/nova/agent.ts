@@ -24,7 +24,7 @@ import {
 } from "./providers/travel";
 
 const MODEL = "gemini-3.5-flash-lite";
-const ITINERARY_MODEL = "gemini-3.1-pro-preview";
+const ITINERARY_MODEL = "gemini-3.5-flash-lite";
 
 function getAI(): GoogleGenAI {
   const apiKey = process.env["GEMINI_API_KEY"];
