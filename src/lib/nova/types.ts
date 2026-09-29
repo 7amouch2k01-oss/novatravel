@@ -41,6 +41,7 @@ export type MessageContentType =
   | "activity_results"
   | "restaurant_results"
   | "itinerary"
+  | "itinerary_results"
   | "booking_summary"
   | "destination_results"
   | "error";
@@ -221,6 +222,9 @@ export interface TripContext {
   tripStyle?: string | undefined;                 // "relaxed" | "active" | "cultural" | "adventure"
   hotelName?: string | undefined;                 // selected hotel for booking
   flightId?: string | undefined;                  // selected flight for booking
+  stops?: string[] | undefined;                   // real destination slugs currently in the trip
+  confirmedDaysPlan?: ItineraryDay[] | undefined;  // confirmed day-by-day plan
+  isPlanConfirmed?: boolean | undefined;          // whether user approved/confirmed plan
 }
 
 // ─── Agent Intent ─────────────────────────────────────────────────────────────

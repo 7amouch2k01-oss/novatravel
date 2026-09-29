@@ -174,6 +174,15 @@ export function useNovaChat(options: UseChatOptions = {}) {
     setMessages((prev) => [...prev, switchMsg]);
   }, []);
 
+  const updateTripContext = useCallback((updater: Partial<TripContext> | ((prev: TripContext) => TripContext)) => {
+    setTripContext((prev) => {
+      if (typeof updater === "function") {
+        return updater(prev);
+      }
+      return { ...prev, ...updater };
+    });
+  }, []);
+
   return {
     messages,
     mode,
@@ -184,6 +193,7 @@ export function useNovaChat(options: UseChatOptions = {}) {
     sendMessage: sendUserMessage,
     clearConversation,
     switchMode,
+    updateTripContext,
     bottomRef,
   };
 }

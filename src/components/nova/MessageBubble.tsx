@@ -17,7 +17,9 @@ import {
   DestinationCard,
   BookingCard,
   SourceList,
+  ItineraryCard,
 } from "./ResultCards";
+import type { Itinerary } from "@/lib/nova/types";
 
 // ─── Simple Markdown-ish Text ─────────────────────────────────────────────────
 
@@ -46,10 +48,12 @@ function RichText({ text }: { text: string }) {
 
 interface MessageBubbleProps {
   message: Message;
-  isLast?: boolean;
+  isLast?: boolean | undefined;
+  isPlanConfirmed?: boolean | undefined;
+  onConfirmItinerary?: ((itinerary: Itinerary) => void) | undefined;
 }
 
-export function MessageBubble({ message, isLast }: MessageBubbleProps) {
+export function MessageBubble({ message, isLast, isPlanConfirmed, onConfirmItinerary }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const content = message.content;
 
@@ -141,6 +145,15 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
               <DestinationCard key={dest.id} destination={dest} />
             ))}
           </div>
+        )}
+
+        {/* Itinerary */}
+        {content.itinerary && (
+          <ItineraryCard
+            itinerary={content.itinerary}
+            isConfirmed={isPlanConfirmed}
+            onConfirm={onConfirmItinerary}
+          />
         )}
 
         {/* Booking summary */}

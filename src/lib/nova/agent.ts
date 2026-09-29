@@ -13,7 +13,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import type { AgentRequest, AgentResponse, IntentType, TripContext, MessageContent, ToolCall, Source, JsonValue } from "./types";
+import type { AgentRequest, AgentResponse, IntentType, TripContext, MessageContent, ToolCall, Source, JsonValue, Itinerary, ItineraryDay } from "./types";
 import { getWebSearchProvider } from "./providers/web-search";
 import {
   GeminiHotelProvider,
@@ -382,6 +382,78 @@ async function executeWebSearch(query: string, label: string): Promise<{ sources
 
 // â”€â”€â”€ Response Generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+
+// ─── Itinerary Builder ────────────────────────────────────────────────────────
+
+async function buildItinerary(
+  context: TripContext,
+  activities: { name: string; description?: string | undefined; estimatedCost?: number | undefined; currency?: string | undefined; category?: string | undefined }[]
+): Promise<Itinerary | undefined> {
+  const ai = getAI();
+
+  const days = context.durationDays ?? 3;
+  const dest = context.destination ?? "Tunisia";
+  const travelers = context.travelers ?? 2;
+  const currency = context.currency ?? "TND";
+
+  const prompt = `You are a professional travel planner. Create a detailed ${days}-day itinerary for ${travelers} traveler(s) visiting ${dest}.
+
+Available activities data:
+${JSON.stringify(activities.slice(0, 10), null, 2)}
+
+Return a valid JSON object (no markdown, no extra text):
+{
+  "id": "itin-${Date.now()}",
+  "title": "short catchy title string",
+  "destination": "${dest}",
+  "days": [
+    {
+      "day": 1,
+      "city": "city/area name",
+      "theme": "Day theme e.g. Historical Discovery",
+      "items": [
+        {
+          "slot": "morning",
+          "time": "09:00",
+          "place": "place name",
+          "duration": "2 hours",
+          "description": "what to do there",
+          "estimatedCost": 30,
+          "currency": "${currency}",
+          "transport": "by taxi"
+        }
+      ]
+    }
+  ],
+  "totalEstimatedCost": 500,
+  "currency": "${currency}",
+  "travelers": ${travelers},
+  "notes": "practical tips"
+}
+
+Build exactly ${days} days. Make it realistic, culturally rich, and engaging. Return ONLY the JSON object.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: ITINERARY_MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0.7,
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const rawText = response.text ?? "";
+    const parsed = JSON.parse(rawText) as Itinerary;
+    if (!parsed.id) parsed.id = `itin-${Date.now()}`;
+    return parsed;
+  } catch (err) {
+    console.error("[NOVA] buildItinerary failed:", err);
+    return undefined;
+  }
+}
+
 async function generateTextResponse(
   message: string,
   history: AgentRequest["history"],
@@ -534,16 +606,54 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
       }
     }
 
-    // For itinerary building, also search for activities
+    // For itinerary building, search for activities and build structured itinerary
     if (intent === "ITINERARY_BUILD" && updatedContext.destination) {
       const [actRes] = await Promise.allSettled([
         executeActivitySearch(updatedContext),
       ]);
+      let acts: Array<{ name: string; description?: string | undefined; estimatedCost?: number | undefined; currency?: string | undefined; category?: string | undefined }> = [];
       if (actRes.status === "fulfilled") {
         const { content, toolCall } = actRes.value;
         toolCalls.push(toolCall);
         combinedContent = { ...combinedContent, ...content };
-        toolResultsText += `Activities for itinerary: ${JSON.stringify(content.activities?.slice(0, 5), null, 2)}`;
+        acts = content.activities ?? [];
+        toolResultsText += `Activities for itinerary: ${JSON.stringify(acts.slice(0, 5), null, 2)}`;
+      }
+
+      // Build structured day-by-day itinerary
+      const itineraryToolCall: ToolCall = {
+        id: `tool-itin-${Date.now()}`,
+        name: "build_itinerary",
+        label: `Crafting personalized itinerary for ${updatedContext.destination}...`,
+        status: "running",
+        startedAt: Date.now(),
+      };
+      toolCalls.push(itineraryToolCall);
+
+      const generatedItinerary = await buildItinerary(updatedContext, acts);
+      if (generatedItinerary) {
+        itineraryToolCall.status = "done";
+        itineraryToolCall.endedAt = Date.now();
+        itineraryToolCall.result = { title: generatedItinerary.title, days: generatedItinerary.days.length };
+        combinedContent.itinerary = generatedItinerary;
+
+        // Auto-extract stops if not already set
+        const itineraryStops = Array.from(
+          new Set(
+            generatedItinerary.days
+              .map((d) => d.city?.trim())
+              .filter((c): c is string => Boolean(c && c.length > 1))
+          )
+        );
+        if (itineraryStops.length > 0 && (!updatedContext.stops || updatedContext.stops.length === 0)) {
+          updatedContext.stops = itineraryStops;
+        }
+
+        toolResultsText += `\nStructured itinerary generated: "${generatedItinerary.title}" with ${generatedItinerary.days.length} days.`;
+      } else {
+        itineraryToolCall.status = "error";
+        itineraryToolCall.error = "Could not generate structured plan";
+        itineraryToolCall.endedAt = Date.now();
       }
     }
   } catch (error) {
@@ -581,7 +691,8 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
   };
 
   // Determine the most specific content type
-  if (combinedContent.hotels?.length) finalContent.type = "hotel_results";
+  if (combinedContent.itinerary) finalContent.type = "itinerary_results";
+  else if (combinedContent.hotels?.length) finalContent.type = "hotel_results";
   else if (combinedContent.flights?.length) finalContent.type = "flight_results";
   else if (combinedContent.activities?.length) finalContent.type = "activity_results";
   else if (combinedContent.restaurants?.length) finalContent.type = "restaurant_results";

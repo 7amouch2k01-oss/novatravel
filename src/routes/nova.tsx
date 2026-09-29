@@ -19,6 +19,9 @@ import {
   Trash2,
   AlertCircle,
   MapPin,
+  CheckCircle2,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import { NovaMark, Wordmark } from "@/components/nova/NovaMark";
 import { RouteMap } from "@/components/nova/RouteMap";
@@ -28,6 +31,7 @@ import { ToolCallIndicator } from "@/components/nova/ToolCallIndicator";
 import { ModeSwitcher } from "@/components/nova/ModeSwitcher";
 import { budget, budgetTotal, bySlug, tripStops } from "@/lib/tunisia";
 import { useNovaChat, useNovaStatus } from "@/hooks/use-nova-chat";
+import type { Itinerary } from "@/lib/nova/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -155,11 +159,33 @@ function Workspace() {
     sendMessage,
     clearConversation,
     switchMode,
+    updateTripContext,
     bottomRef,
   } = useNovaChat({ initialMode: "travel" });
 
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleConfirmItinerary = (itinerary: Itinerary) => {
+    const extractedStops = Array.from(
+      new Set(
+        itinerary.days
+          .map((d) => d.city?.trim())
+          .filter((c): c is string => Boolean(c && c.length > 1))
+      )
+    );
+
+    updateTripContext((prev) => ({
+      ...prev,
+      isPlanConfirmed: true,
+      confirmedDaysPlan: itinerary.days,
+      stops: extractedStops.length > 0 ? extractedStops : prev.stops,
+      durationDays: itinerary.days.length,
+      ...(itinerary.destination ? { destination: itinerary.destination } : {}),
+      ...(itinerary.totalEstimatedCost ? { budget: itinerary.totalEstimatedCost } : {}),
+      ...(itinerary.currency ? { currency: itinerary.currency } : {}),
+    }));
+  };
 
   const handleSend = (text: string) => {
     if (!text.trim() || isThinking) return;
@@ -289,6 +315,8 @@ function Workspace() {
                   key={m.id}
                   message={m}
                   isLast={i === messages.length - 1}
+                  isPlanConfirmed={tripContext.isPlanConfirmed}
+                  onConfirmItinerary={handleConfirmItinerary}
                 />
               ))
             )}
@@ -378,95 +406,192 @@ function Workspace() {
 
       {/* ── Right panel: trip summary ─────────────────────── */}
       <aside className="hidden overflow-y-auto border-l border-border bg-card p-6 xl:block">
-        <h2 className="font-display text-xl font-semibold">Your trip</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-xl font-semibold">Your trip</h2>
+          {tripContext.isPlanConfirmed && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+              <CheckCircle2 className="size-3" />
+              Confirmed
+            </span>
+          )}
+        </div>
 
-        {tripContext.destination ? (
-          <>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-              {[
-                [tripContext.durationDays ?? "—", "days"],
-                [tripContext.travelers ?? "—", "travelers"],
-                ...(tripContext.budget
-                  ? [[`${tripContext.budget.toLocaleString()}`, tripContext.currency ?? "budget"]]
-                  : []),
-              ].map(([a, b]) => (
-                <div key={String(b)} className="rounded-xl bg-secondary p-3">
-                  <p className="font-display text-lg font-semibold">{a}</p>
-                  <p className="text-[11px] text-muted-foreground">{b}</p>
-                </div>
+        {/* Dynamic / Context Stats */}
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-secondary p-3">
+            <p className="font-display text-lg font-semibold">
+              {tripContext.durationDays ?? (tripContext.destination ? "—" : "5")}
+            </p>
+            <p className="text-[11px] text-muted-foreground">days</p>
+          </div>
+          <div className="rounded-xl bg-secondary p-3">
+            <p className="font-display text-lg font-semibold">
+              {tripContext.travelers ?? (tripContext.destination ? "—" : "2")}
+            </p>
+            <p className="text-[11px] text-muted-foreground">travelers</p>
+          </div>
+          <div className="rounded-xl bg-secondary p-3">
+            <p className="font-display text-lg font-semibold">
+              {tripContext.budget
+                ? `${tripContext.budget.toLocaleString()}`
+                : tripContext.destination
+                ? "—"
+                : "2,500"}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {tripContext.currency ?? "TND"} budget
+            </p>
+          </div>
+        </div>
+
+        {/* Interests if any */}
+        {tripContext.interests && tripContext.interests.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Interests
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tripContext.interests.map((i) => (
+                <span
+                  key={i}
+                  className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
+                >
+                  {i}
+                </span>
               ))}
             </div>
+          </div>
+        )}
 
-            {tripContext.interests && tripContext.interests.length > 0 && (
-              <>
-                <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Interests
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {tripContext.interests.map((i) => (
-                    <span
-                      key={i}
-                      className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
-                    >
-                      {i}
+        {/* Live Interactive Map of Real Destinations */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Live route map
+            </p>
+            <span className="text-[11px] font-medium text-accent">
+              {(tripContext.stops && tripContext.stops.length > 0)
+                ? `${tripContext.stops.length} stop${tripContext.stops.length > 1 ? "s" : ""}`
+                : tripContext.destination
+                ? "Active destination"
+                : "Sample route"}
+            </span>
+          </div>
+
+          <RouteMap
+            stops={
+              tripContext.stops && tripContext.stops.length > 0
+                ? tripContext.stops
+                : tripContext.destination
+                ? [tripContext.destination]
+                : tripStops
+            }
+            activeDestination={tripContext.destination}
+            compact
+            className="mt-3 h-48"
+          />
+        </div>
+
+        {/* Confirmed Days Plan Section */}
+        {tripContext.isPlanConfirmed && tripContext.confirmedDaysPlan && tripContext.confirmedDaysPlan.length > 0 ? (
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center gap-2 border-b border-border pb-2">
+              <Calendar className="size-4 text-accent" />
+              <h3 className="font-display text-sm font-semibold">
+                Confirmed Days Plan ({tripContext.confirmedDaysPlan.length} Days)
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              {tripContext.confirmedDaysPlan.map((dayPlan) => (
+                <div
+                  key={dayPlan.day}
+                  className="rounded-xl border border-border bg-card p-3 shadow-xs transition-colors hover:border-accent/40"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="rounded-md bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
+                      Day {dayPlan.day}
                     </span>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            {/* Default trip display */}
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              {[
-                ["5", "days"],
-                ["2", "travelers"],
-                ["2,500", "TND budget"],
-              ].map(([a, b]) => (
-                <div key={b} className="rounded-xl bg-secondary p-3">
-                  <p className="font-display text-lg font-semibold">{a}</p>
-                  <p className="text-[11px] text-muted-foreground">{b}</p>
+                    <span className="text-xs font-medium text-foreground">
+                      {dayPlan.city}
+                    </span>
+                  </div>
+
+                  {dayPlan.theme && (
+                    <p className="mt-1.5 text-xs font-medium text-muted-foreground">
+                      {dayPlan.theme}
+                    </p>
+                  )}
+
+                  <div className="mt-2.5 space-y-1.5 border-t border-border/50 pt-2">
+                    {dayPlan.items.slice(0, 3).map((item, idx) => (
+                      <div key={idx} className="flex items-start gap-2 text-xs">
+                        <Clock className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                        <div className="flex-1">
+                          <span className="font-medium text-foreground">{item.place}</span>
+                          {item.description && (
+                            <p className="line-clamp-1 text-[11px] text-muted-foreground">
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {dayPlan.items.length > 3 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        + {dayPlan.items.length - 3} more activities
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
-
-            <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Destinations
+          </div>
+        ) : (
+          /* Default Destinations & Budget view if no confirmed plan */
+          <>
+            <p className="mt-6 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              {tripContext.destination ? "Trip Highlights" : "Destinations"}
             </p>
             <ul className="mt-3 space-y-2">
-              {tripStops.map((s, i) => {
-                const d = bySlug(s)!;
+              {(tripContext.stops && tripContext.stops.length > 0
+                ? tripContext.stops
+                : tripStops
+              ).slice(0, 4).map((s, i) => {
+                const d = bySlug(s.toLowerCase());
                 return (
                   <li key={s}>
-                    <Link
-                      to="/explore/$slug"
-                      params={{ slug: s }}
-                      className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-secondary"
-                    >
-                      <img
-                        src={d.image}
-                        alt=""
-                        className="size-10 rounded-lg object-cover"
-                        loading="lazy"
-                      />
+                    <div className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-secondary">
+                      {d?.image ? (
+                        <img
+                          src={d.image}
+                          alt=""
+                          className="size-10 rounded-lg object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="grid size-10 place-items-center rounded-lg bg-secondary text-xs font-bold text-accent">
+                          <MapPin className="size-4" />
+                        </div>
+                      )}
                       <div className="flex-1">
-                        <p className="text-sm font-semibold">{d.name}</p>
+                        <p className="text-sm font-semibold capitalize">
+                          {d ? d.name : s}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {d.duration}
+                          {d?.duration ?? "Exploration stop"}
                         </p>
                       </div>
                       <span className="grid size-6 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                         {i + 1}
                       </span>
-                    </Link>
+                    </div>
                   </li>
                 );
               })}
             </ul>
-            <RouteMap stops={tripStops} compact className="mt-4 h-44" />
 
-            <div className="mt-7 flex items-baseline justify-between">
+            <div className="mt-6 flex items-baseline justify-between">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Estimated budget
               </p>
@@ -492,7 +617,7 @@ function Workspace() {
             <div className="mt-4 flex items-baseline justify-between border-t border-border pt-4">
               <span className="text-sm font-semibold">Total</span>
               <span className="font-display text-2xl font-semibold">
-                ~{fmt(budgetTotal)} TND
+                ~{fmt(tripContext.budget ?? budgetTotal)} {tripContext.currency ?? "TND"}
               </span>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">

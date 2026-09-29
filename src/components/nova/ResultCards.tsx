@@ -19,6 +19,7 @@ import type {
   DestinationResult,
   BookingConfirmation,
   Source,
+  Itinerary,
 } from "@/lib/nova/types";
 import {
   Star,
@@ -37,6 +38,8 @@ import {
   Info,
   Globe,
   ArrowRight,
+  Calendar,
+  Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -465,6 +468,93 @@ export function SourceList({ sources }: { sources: Source[] }) {
             <ExternalLink className="size-2.5" />
           </a>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Itinerary Card with Confirmation ─────────────────────────────────────────
+
+export function ItineraryCard({
+  itinerary,
+  isConfirmed = false,
+  onConfirm,
+}: {
+  itinerary: Itinerary;
+  isConfirmed?: boolean | undefined;
+  onConfirm?: ((itinerary: Itinerary) => void) | undefined;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 transition-all hover:shadow-soft">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Calendar className="size-4 text-accent" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {itinerary.days.length} Days Itinerary
+            </span>
+            {isConfirmed && (
+              <Badge className="bg-emerald-500/15 text-emerald-600 text-xs gap-1 border-emerald-500/20">
+                <Check className="size-3" /> Confirmed Plan
+              </Badge>
+            )}
+          </div>
+          <h3 className="mt-1 text-lg font-semibold">{itinerary.title}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Destination: <span className="text-foreground font-medium">{itinerary.destination}</span>
+          </p>
+        </div>
+        {itinerary.totalEstimatedCost && (
+          <div className="text-right">
+            <span className="font-display text-lg font-semibold">
+              {itinerary.currency ?? "TND"} {itinerary.totalEstimatedCost.toLocaleString()}
+            </span>
+            <p className="text-[10px] text-muted-foreground">estimated total</p>
+          </div>
+        )}
+      </div>
+
+      {/* Days Preview */}
+      <div className="mt-4 space-y-3">
+        {itinerary.days.map((day) => (
+          <div key={day.day} className="rounded-xl border border-border/60 bg-secondary/50 p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-accent px-1.5 py-0.5 bg-accent/10 rounded">
+                  DAY {day.day}
+                </span>
+                <span className="text-sm font-semibold">{day.city}</span>
+              </div>
+              <span className="text-xs text-muted-foreground">{day.theme}</span>
+            </div>
+            {day.items && day.items.length > 0 && (
+              <div className="mt-2 space-y-1.5 pl-2 border-l border-border/60">
+                {day.items.map((item, idx) => (
+                  <div key={idx} className="flex items-baseline justify-between text-xs">
+                    <span className="font-medium text-foreground/90">{item.place}</span>
+                    <span className="text-muted-foreground">{item.slot}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Confirmation Action Button */}
+      <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+        <span className="text-xs text-muted-foreground">
+          {isConfirmed ? "This plan is active and showing on your live map." : "Confirm this plan to lock in stops & map route."}
+        </span>
+        {!isConfirmed && onConfirm && (
+          <Button
+            size="sm"
+            onClick={() => onConfirm(itinerary)}
+            className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Check className="size-3.5" /> Confirm Plan
+          </Button>
+        )}
       </div>
     </div>
   );

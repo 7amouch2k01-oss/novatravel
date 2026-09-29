@@ -32,6 +32,11 @@ const TripContextSchema = z.object({
   accessibilityNeeds: z.array(z.string()).optional(),
   preferredActivities: z.array(z.string()).optional(),
   tripStyle: z.string().optional(),
+  hotelName: z.string().optional(),
+  flightId: z.string().optional(),
+  stops: z.array(z.string()).optional(),
+  confirmedDaysPlan: z.array(z.any()).optional(),
+  isPlanConfirmed: z.boolean().optional(),
 });
 
 const HistoryItemSchema = z.object({
