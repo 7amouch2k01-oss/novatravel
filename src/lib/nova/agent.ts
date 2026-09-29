@@ -32,6 +32,63 @@ function getAI(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
+// ─── Retry Helper ─────────────────────────────────────────────────────────────
+
+/**
+ * Retries an async fn up to `maxAttempts` times when the Gemini API returns
+ * 503 (model overloaded / high demand) or 429 (rate limit).
+ * Uses exponential backoff: 1s, 2s, 4s … capped at 8s.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 4,
+  label = "Gemini API"
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const isOverloaded =
+        msg.includes("503") ||
+        msg.includes("UNAVAILABLE") ||
+        msg.includes("high demand") ||
+        msg.includes("429") ||
+        msg.includes("RESOURCE_EXHAUSTED");
+
+      if (isOverloaded && attempt < maxAttempts) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        console.warn(
+          `[${label}] Attempt ${attempt}/${maxAttempts} failed (overloaded). Retrying in ${delay}ms…`
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/** Converts a raw Gemini API error to a friendly message shown in the chat */
+function friendlyGeminiError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand")) {
+    return "The AI model is temporarily experiencing high demand. Please try again in a few seconds — NOVA will retry automatically.";
+  }
+  if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
+    return "NOVA has hit a temporary rate limit. Please wait a moment and try again.";
+  }
+  if (msg.includes("GEMINI_API_KEY")) {
+    return "NOVA's API key is not configured. Please add your Gemini API key in settings.";
+  }
+  return `An unexpected error occurred: ${msg}`;
+}
+
+
+
 // â”€â”€â”€ System Prompts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const NOVA_PERSONALITY = `You are NOVA, an intelligent AI assistant for TUNITRAVEL â€” a premium travel agency.
@@ -125,11 +182,15 @@ Return JSON with:
 Return ONLY valid JSON.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { temperature: 0.1, responseMimeType: "application/json" },
-    });
+    const response = await withRetry(
+      () => ai.models.generateContent({
+        model: MODEL,
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: { temperature: 0.1, responseMimeType: "application/json" },
+      }),
+      4,
+      "detectIntent"
+    );
 
     const parsed = JSON.parse(response.text ?? "{}");
     return {
@@ -483,29 +544,33 @@ Return ONLY a valid JSON object matching this schema:
   "answeredQuestion": "..."
 }`;
 
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              inlineData: {
-                mimeType: attachment.mimeType,
-                data: cleanBase64,
+    const response = await withRetry(
+      () => ai.models.generateContent({
+        model: MODEL,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: attachment.mimeType,
+                  data: cleanBase64,
+                },
               },
-            },
-            {
-              text: prompt,
-            },
-          ],
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        config: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
         },
-      ],
-      config: {
-        temperature: 0.1,
-        responseMimeType: "application/json",
-      },
-    });
+      }),
+      4,
+      "executeDocumentAnalysis"
+    );
 
     const parsed = JSON.parse(response.text ?? "{}");
     toolCall.status = "done";
@@ -620,15 +685,19 @@ Return a valid JSON object (no markdown formatting, no backticks, ONLY raw JSON)
 Build exactly ${days} days. Every day must have realistic places, morning/afternoon/evening slots. Return ONLY the JSON object.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: ITINERARY_MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-        responseMimeType: "application/json",
-      },
-    });
+    const response = await withRetry(
+      () => ai.models.generateContent({
+        model: ITINERARY_MODEL,
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json",
+        },
+      }),
+      4,
+      "buildItinerary"
+    );
 
     const rawText = response.text ?? "";
     const parsed = JSON.parse(rawText) as Itinerary;
@@ -671,20 +740,28 @@ async function generateTextResponse(
 
   const useProModel = intent === "ITINERARY_BUILD" || intent === "TRIP_PLANNING";
 
-  const response = await ai.models.generateContent({
-    model: useProModel ? ITINERARY_MODEL : MODEL,
-    contents: [
-      ...historyContents,
-      { role: "user", parts: [{ text: userMessage }] },
-    ],
-    config: {
-      systemInstruction: systemPrompt,
-      temperature: 0.7,
-      maxOutputTokens: 4096,
-    },
-  });
+  try {
+    const response = await withRetry(
+      () => ai.models.generateContent({
+        model: useProModel ? ITINERARY_MODEL : MODEL,
+        contents: [
+          ...historyContents,
+          { role: "user", parts: [{ text: userMessage }] },
+        ],
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+        },
+      }),
+      4,
+      "generateTextResponse"
+    );
 
-  return response.text ?? "I'm sorry, I couldn't generate a response. Please try again.";
+    return response.text ?? "I'm sorry, I couldn't generate a response. Please try again.";
+  } catch (err) {
+    return friendlyGeminiError(err);
+  }
 }
 
 // â”€â”€â”€ Follow-Up Suggestions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -704,11 +781,15 @@ Return a JSON array of 3 short follow-up question strings. Make them specific to
 Return ONLY valid JSON array of strings.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { temperature: 0.8, responseMimeType: "application/json" },
-    });
+    const response = await withRetry(
+      () => ai.models.generateContent({
+        model: MODEL,
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: { temperature: 0.8, responseMimeType: "application/json" },
+      }),
+      3,
+      "generateFollowUps"
+    );
 
     const suggestions = JSON.parse(response.text ?? "[]") as string[];
     return suggestions.slice(0, 3);
