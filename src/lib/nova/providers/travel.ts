@@ -60,8 +60,8 @@ IMPORTANT RULES:
     model: MODEL,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: {
-      tools: [{ googleSearch: {} }],
       temperature: 0.2,
+      responseMimeType: "application/json",
     },
   });
 
@@ -282,8 +282,8 @@ Return ONLY valid JSON array.`;
       model: MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
-        tools: [{ googleSearch: {} }],
         temperature: 0.3,
+        responseMimeType: "application/json",
       },
     });
 

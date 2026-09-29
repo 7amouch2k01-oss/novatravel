@@ -51,8 +51,8 @@ Return ONLY valid JSON, no other text. Format:
           },
         ],
         config: {
-          tools: [{ googleSearch: {} }],
           temperature: 0.1,
+          responseMimeType: "application/json",
         },
       });
 

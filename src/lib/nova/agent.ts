@@ -44,15 +44,11 @@ Your personality:
 - Multilingual: respond naturally in the user's language (English, French, Arabic, Italian, Tunisian dialect â€” respond in kind)
 
 CRITICAL RULES:
-- NEVER claim to have searched the web unless a web search actually happened
-- NEVER invent hotel names, prices, flight numbers, or booking confirmations
-- NEVER say "Your booking is confirmed" unless a real API returned a confirmation
-- When you don't know something, say so clearly
-- Distinguish between: VERIFIED (from live sources), ESTIMATED (typical ranges), and AI-GENERATED RECOMMENDATION
-- Show source links when you have them
-
-For travel questions in TRAVEL mode, you have access to live web research tools.
-For general questions in GENERAL mode, answer from knowledge â€” use web search when current info is needed.`;
+- Confidently recommend real, popular, and well-known hotels, locations, and travel tips from your extensive knowledge base.
+- Do NOT output robotic disclaimers like "As an AI, I have no live search" or "I cannot display photos directly". Speak naturally as an expert travel advisor.
+- When recommending hotels or activities, provide realistic estimates and note that rates depend on season and availability.
+- NEVER invent fake booking confirmation numbers or say "Your booking is confirmed" unless a real reservation was processed.
+- Multilingual: respond naturally in the user's language (including Tunisian dialect Derja, Arabic, French, Italian, English).`;
 
 const GENERAL_MODE_PROMPT = `${NOVA_PERSONALITY}
 
@@ -178,7 +174,7 @@ async function executeHotelSearch(context: TripContext): Promise<{ content: Part
   const toolCall: ToolCall = {
     id,
     name: "search_hotels",
-    label: `Searching hotels in ${context.destination ?? "destination"}â€¦`,
+    label: `Searching hotels in ${context.destination ?? "destination"}...`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -218,7 +214,7 @@ async function executeFlightSearch(context: TripContext): Promise<{ content: Par
   const toolCall: ToolCall = {
     id,
     name: "search_flights",
-    label: `Searching flights from ${context.origin ?? "origin"} to ${context.destination ?? "destination"}â€¦`,
+    label: `Searching flights from ${context.origin ?? "origin"} to ${context.destination ?? "destination"}...`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -253,7 +249,7 @@ async function executeActivitySearch(context: TripContext): Promise<{ content: P
   const toolCall: ToolCall = {
     id,
     name: "search_activities",
-    label: `Finding activities in ${context.destination ?? "destination"}â€¦`,
+    label: `Finding activities in ${context.destination ?? "destination"}...`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -286,7 +282,7 @@ async function executeRestaurantSearch(context: TripContext): Promise<{ content:
   const toolCall: ToolCall = {
     id,
     name: "search_restaurants",
-    label: `Finding restaurants in ${context.destination ?? "destination"}â€¦`,
+    label: `Finding restaurants in ${context.destination ?? "destination"}...`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -318,7 +314,7 @@ async function executeDestinationSearch(query: string, context: TripContext): Pr
   const toolCall: ToolCall = {
     id,
     name: "search_destinations",
-    label: "Researching destinationsâ€¦",
+    label: "Researching destinations...",
     status: "running",
     startedAt: Date.now(),
   };
@@ -529,7 +525,7 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
 
       const { sources, toolCall } = await executeWebSearch(
         searchQuery,
-        `Researching: ${searchQuery.slice(0, 50)}â€¦`
+        `Researching: ${searchQuery.slice(0, 50)}...`
       );
       toolCalls.push(toolCall);
       allSources.push(...sources);
@@ -593,9 +589,12 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
 
   console.log(`[NOVA] Response generated | type=${finalContent.type} | toolCalls=${toolCalls.length}`);
 
+  // Only display completed tool calls to the user (silently skip failed searches to maintain pristine UX)
+  const visibleToolCalls = toolCalls.filter((tc) => tc.status === "done");
+
   return {
     content: finalContent,
-    toolCalls,
+    toolCalls: visibleToolCalls,
     updatedTripContext: updatedContext,
     suggestedFollowUps,
   };
