@@ -213,12 +213,25 @@ export function useNovaChat(options: UseChatOptions = {}) {
 
     onError: (error) => {
       setLiveToolCalls([]);
+      const raw = error instanceof Error ? error.message : String(error);
+
+      let friendlyText: string;
+      if (raw.includes("503") || raw.includes("UNAVAILABLE") || raw.includes("high demand")) {
+        friendlyText = "The AI is temporarily overloaded due to high demand. Please wait a moment and try again — it's usually resolved within a few seconds.";
+      } else if (raw.includes("429") || raw.includes("RESOURCE_EXHAUSTED")) {
+        friendlyText = "NOVA has hit a temporary rate limit. Please wait a few seconds and try again.";
+      } else if (raw.includes("GEMINI_API_KEY")) {
+        friendlyText = "NOVA's API key is not configured. Please add your Gemini API key.";
+      } else {
+        friendlyText = "Something went wrong. Please try again.";
+      }
+
       const errorMsg: Message = {
         id: genId(),
         role: "nova",
         content: {
           type: "error",
-          text: `I ran into an issue: ${error instanceof Error ? error.message : "Please try again."}`,
+          text: friendlyText,
         },
         timestamp: Date.now(),
       };

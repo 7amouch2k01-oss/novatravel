@@ -88,15 +88,25 @@ export const sendMessage = createServerFn({ method: "POST" })
     } catch (error) {
       console.error("[ServerFn] Agent error:", error);
 
-      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+      const raw = error instanceof Error ? error.message : String(error);
+
+      // Produce a human-readable message — never expose raw API JSON to the user
+      let friendlyText: string;
+      if (raw.includes("503") || raw.includes("UNAVAILABLE") || raw.includes("high demand")) {
+        friendlyText = "The AI is temporarily overloaded due to high demand. NOVA retried automatically but the service is still busy — please wait a moment and try again.";
+      } else if (raw.includes("429") || raw.includes("RESOURCE_EXHAUSTED")) {
+        friendlyText = "NOVA has hit a temporary rate limit. Please wait a few seconds and try again.";
+      } else if (raw.includes("GEMINI_API_KEY")) {
+        friendlyText = "NOVA requires a Gemini API key to function. Please add GEMINI_API_KEY to your .env file and restart the server.";
+      } else {
+        friendlyText = "Something went wrong while processing your request. Please try again.";
+      }
 
       // Return graceful error response — never throw to client
       return {
         content: {
           type: "error",
-          text: errorMessage.includes("GEMINI_API_KEY")
-            ? "NOVA requires a Gemini API key to function. Please add GEMINI_API_KEY to your .env file and restart the server."
-            : `I ran into an issue: ${errorMessage}. Please try again.`,
+          text: friendlyText,
         },
         toolCalls: [],
         updatedTripContext: data.tripContext,
