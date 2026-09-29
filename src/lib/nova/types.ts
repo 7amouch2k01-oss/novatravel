@@ -9,12 +9,20 @@ export type MessageRole = "user" | "nova";
 
 export type ToolStatus = "running" | "done" | "error";
 
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 export interface ToolCall {
   id: string;
   name: string;
   label: string;          // Human-readable label e.g. "Searching the web…"
   status: ToolStatus;
-  result?: unknown;
+  result?: JsonValue | undefined;
   error?: string | undefined;
   startedAt: number;
   endedAt?: number | undefined;

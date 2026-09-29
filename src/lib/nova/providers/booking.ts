@@ -79,11 +79,11 @@ export function buildBookingConfirmation(
       provider: state.item.provider ?? "Provider",
       referenceNumber: state.referenceNumber,
       item: state.item.name,
-      date: state.item.date,
-      price: state.item.price,
-      currency: state.item.currency,
-      cancellationPolicy: state.item.cancellationPolicy,
-      bookingUrl: state.item.bookingUrl,
+      ...(state.item.date !== undefined ? { date: state.item.date } : {}),
+      ...(state.item.price !== undefined ? { price: state.item.price } : {}),
+      ...(state.item.currency !== undefined ? { currency: state.item.currency } : {}),
+      ...(state.item.cancellationPolicy !== undefined ? { cancellationPolicy: state.item.cancellationPolicy } : {}),
+      ...(state.item.bookingUrl !== undefined ? { bookingUrl: state.item.bookingUrl } : {}),
       message: `Your booking is confirmed! Reference: ${state.referenceNumber}`,
     };
   }
@@ -93,13 +93,13 @@ export function buildBookingConfirmation(
       state: "failed",
       provider: state.item.provider ?? "Provider",
       item: state.item.name,
-      date: state.item.date,
-      price: state.item.price,
-      currency: state.item.currency,
+      ...(state.item.date !== undefined ? { date: state.item.date } : {}),
+      ...(state.item.price !== undefined ? { price: state.item.price } : {}),
+      ...(state.item.currency !== undefined ? { currency: state.item.currency } : {}),
       message:
         state.error ??
         "The booking could not be completed. Please try the provider link directly.",
-      bookingUrl: state.item.bookingUrl,
+      ...(state.item.bookingUrl !== undefined ? { bookingUrl: state.item.bookingUrl } : {}),
     };
   }
 
@@ -108,11 +108,11 @@ export function buildBookingConfirmation(
     state: "booking_ready",
     provider: state.item.provider ?? "Provider",
     item: state.item.name,
-    date: state.item.date,
-    price: state.item.price,
-    currency: state.item.currency,
-    cancellationPolicy: state.item.cancellationPolicy,
-    bookingUrl: state.item.bookingUrl,
+    ...(state.item.date !== undefined ? { date: state.item.date } : {}),
+    ...(state.item.price !== undefined ? { price: state.item.price } : {}),
+    ...(state.item.currency !== undefined ? { currency: state.item.currency } : {}),
+    ...(state.item.cancellationPolicy !== undefined ? { cancellationPolicy: state.item.cancellationPolicy } : {}),
+    ...(state.item.bookingUrl !== undefined ? { bookingUrl: state.item.bookingUrl } : {}),
     message: state.item.bookingUrl
       ? `Ready to book. Click "Continue with ${state.item.provider ?? "provider"}" to complete your reservation.`
       : `I've found the details for ${state.item.name}. No direct booking API is connected — I'll link you to the provider's booking page.`,

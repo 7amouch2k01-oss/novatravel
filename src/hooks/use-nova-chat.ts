@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { sendMessage, checkApiStatus } from "@/lib/nova/server-fns";
-import type { Message, TripContext, AgentMode, ToolCall } from "@/lib/nova/types";
+import type { Message, TripContext, AgentMode, ToolCall, AgentResponse } from "@/lib/nova/types";
 import { useQuery } from "@tanstack/react-query";
 
 // ─── ID Generator ─────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ export function useNovaChat(options: UseChatOptions = {}) {
           tripContext,
           mode,
         },
-      });
+      }) as AgentResponse;
 
       return { response, userMsg };
     },

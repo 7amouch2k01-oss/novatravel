@@ -1,19 +1,19 @@
 /**
- * NOVA Travel Agent — Core AI Agent
+ * NOVA Travel Agent â€” Core AI Agent
  *
  * NOVA processes user messages through a pipeline:
- * 1. Intent Detection → understand what the user wants
- * 2. Mode Selection → General AI or Travel Agent
- * 3. Tool Selection → which tools are needed
- * 4. Tool Execution → run tools in parallel where possible
- * 5. Result Validation → ensure no hallucinated results
- * 6. Answer Generation → compose the final response
+ * 1. Intent Detection â†’ understand what the user wants
+ * 2. Mode Selection â†’ General AI or Travel Agent
+ * 3. Tool Selection â†’ which tools are needed
+ * 4. Tool Execution â†’ run tools in parallel where possible
+ * 5. Result Validation â†’ ensure no hallucinated results
+ * 6. Answer Generation â†’ compose the final response
  *
- * Architecture is modular — providers can be swapped without changing agent logic.
+ * Architecture is modular â€” providers can be swapped without changing agent logic.
  */
 
 import { GoogleGenAI } from "@google/genai";
-import type { AgentRequest, AgentResponse, IntentType, TripContext, MessageContent, ToolCall, Source } from "./types";
+import type { AgentRequest, AgentResponse, IntentType, TripContext, MessageContent, ToolCall, Source, JsonValue } from "./types";
 import { getWebSearchProvider } from "./providers/web-search";
 import {
   GeminiHotelProvider,
@@ -27,21 +27,21 @@ const MODEL = "gemini-2.5-flash";
 const ITINERARY_MODEL = "gemini-2.5-pro";  // Use Pro for complex planning tasks
 
 function getAI(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env["GEMINI_API_KEY"];
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
   return new GoogleGenAI({ apiKey });
 }
 
-// ─── System Prompts ───────────────────────────────────────────────────────────
+// â”€â”€â”€ System Prompts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const NOVA_PERSONALITY = `You are NOVA, an intelligent AI assistant for TUNITRAVEL — a premium travel agency.
+const NOVA_PERSONALITY = `You are NOVA, an intelligent AI assistant for TUNITRAVEL â€” a premium travel agency.
 
 Your personality:
 - Intelligent, friendly, professional, calm, and genuinely helpful
-- Conversational and natural — never robotic or overly formal
+- Conversational and natural â€” never robotic or overly formal
 - Proactive: anticipate what the user needs next
 - Concise for simple questions; detailed for complex research
-- Multilingual: respond naturally in the user's language (English, French, Arabic, Italian, Tunisian dialect — respond in kind)
+- Multilingual: respond naturally in the user's language (English, French, Arabic, Italian, Tunisian dialect â€” respond in kind)
 
 CRITICAL RULES:
 - NEVER claim to have searched the web unless a web search actually happened
@@ -52,7 +52,7 @@ CRITICAL RULES:
 - Show source links when you have them
 
 For travel questions in TRAVEL mode, you have access to live web research tools.
-For general questions in GENERAL mode, answer from knowledge — use web search when current info is needed.`;
+For general questions in GENERAL mode, answer from knowledge â€” use web search when current info is needed.`;
 
 const GENERAL_MODE_PROMPT = `${NOVA_PERSONALITY}
 
@@ -81,10 +81,10 @@ When helping with travel:
 2. Use research tools to find current, accurate information
 3. Present results in structured format with clear sourcing
 4. Ask only for missing information needed for the next useful action
-5. Remember context throughout the conversation — don't re-ask what user already told you
+5. Remember context throughout the conversation â€” don't re-ask what user already told you
 6. Be proactive: if they say "I'm going to Rome next month", you already know destination and timing`;
 
-// ─── Intent Detection ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Intent Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function detectIntent(
   message: string,
@@ -145,7 +145,7 @@ Return ONLY valid JSON.`;
   }
 }
 
-// ─── Context Merger ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Context Merger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function mergeContext(
   existing: TripContext,
@@ -171,14 +171,14 @@ export function mergeContext(
   return merged;
 }
 
-// ─── Tool Execution ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Tool Execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function executeHotelSearch(context: TripContext): Promise<{ content: Partial<MessageContent>; toolCall: ToolCall }> {
   const id = `tool-hotels-${Date.now()}`;
   const toolCall: ToolCall = {
     id,
     name: "search_hotels",
-    label: `Searching hotels in ${context.destination ?? "destination"}…`,
+    label: `Searching hotels in ${context.destination ?? "destination"}â€¦`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -190,18 +190,16 @@ async function executeHotelSearch(context: TripContext): Promise<{ content: Part
       checkIn: context.departureDate ?? "TBD",
       checkOut: context.returnDate ?? "TBD",
       adults: context.adults ?? context.travelers ?? 2,
-      children: context.children,
-      budgetPerNight: context.budget
-        ? Math.round(context.budget / (context.durationDays ?? 5))
-        : undefined,
-      currency: context.currency,
-      category: context.accommodationPreference,
+      ...(context.children !== undefined ? { children: context.children } : {}),
+      ...(context.budget ? { budgetPerNight: Math.round(context.budget / (context.durationDays ?? 5)) } : {}),
+      ...(context.currency !== undefined ? { currency: context.currency } : {}),
+      ...(context.accommodationPreference !== undefined ? { category: context.accommodationPreference } : {}),
       maxResults: 5,
     });
 
     toolCall.status = "done";
     toolCall.endedAt = Date.now();
-    toolCall.result = hotels;
+    toolCall.result = hotels as unknown as JsonValue;
 
     return {
       content: { hotels },
@@ -220,7 +218,7 @@ async function executeFlightSearch(context: TripContext): Promise<{ content: Par
   const toolCall: ToolCall = {
     id,
     name: "search_flights",
-    label: `Searching flights from ${context.origin ?? "origin"} to ${context.destination ?? "destination"}…`,
+    label: `Searching flights from ${context.origin ?? "origin"} to ${context.destination ?? "destination"}â€¦`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -231,15 +229,15 @@ async function executeFlightSearch(context: TripContext): Promise<{ content: Par
       origin: context.origin ?? "",
       destination: context.destination ?? "",
       departureDate: context.departureDate ?? "TBD",
-      returnDate: context.returnDate,
+      ...(context.returnDate !== undefined ? { returnDate: context.returnDate } : {}),
       adults: context.adults ?? context.travelers ?? 1,
-      children: context.children,
+      ...(context.children !== undefined ? { children: context.children } : {}),
       maxResults: 5,
     });
 
     toolCall.status = "done";
     toolCall.endedAt = Date.now();
-    toolCall.result = flights;
+    toolCall.result = flights as unknown as JsonValue;
 
     return { content: { flights }, toolCall };
   } catch (error) {
@@ -255,7 +253,7 @@ async function executeActivitySearch(context: TripContext): Promise<{ content: P
   const toolCall: ToolCall = {
     id,
     name: "search_activities",
-    label: `Finding activities in ${context.destination ?? "destination"}…`,
+    label: `Finding activities in ${context.destination ?? "destination"}â€¦`,
     status: "running",
     startedAt: Date.now(),
   };
@@ -264,15 +262,15 @@ async function executeActivitySearch(context: TripContext): Promise<{ content: P
     const provider = new GeminiActivityProvider();
     const activities = await provider.search({
       destination: context.destination ?? "",
-      interests: context.interests,
-      budget: context.budget,
-      currency: context.currency,
+      ...(context.interests !== undefined ? { interests: context.interests } : {}),
+      ...(context.budget !== undefined ? { budget: context.budget } : {}),
+      ...(context.currency !== undefined ? { currency: context.currency } : {}),
       maxResults: 6,
     });
 
     toolCall.status = "done";
     toolCall.endedAt = Date.now();
-    toolCall.result = activities;
+    toolCall.result = activities as unknown as JsonValue;
 
     return { content: { activities }, toolCall };
   } catch (error) {
@@ -288,22 +286,23 @@ async function executeRestaurantSearch(context: TripContext): Promise<{ content:
   const toolCall: ToolCall = {
     id,
     name: "search_restaurants",
-    label: `Finding restaurants in ${context.destination ?? "destination"}…`,
+    label: `Finding restaurants in ${context.destination ?? "destination"}â€¦`,
     status: "running",
     startedAt: Date.now(),
   };
 
   try {
     const provider = new GeminiRestaurantProvider();
+    const cuisine = context.dietaryPreferences?.join(", ");
     const restaurants = await provider.search({
       destination: context.destination ?? "",
-      cuisine: context.dietaryPreferences?.join(", "),
+      ...(cuisine !== undefined ? { cuisine } : {}),
       maxResults: 6,
     });
 
     toolCall.status = "done";
     toolCall.endedAt = Date.now();
-    toolCall.result = restaurants;
+    toolCall.result = restaurants as unknown as JsonValue;
 
     return { content: { restaurants }, toolCall };
   } catch (error) {
@@ -319,7 +318,7 @@ async function executeDestinationSearch(query: string, context: TripContext): Pr
   const toolCall: ToolCall = {
     id,
     name: "search_destinations",
-    label: "Researching destinations…",
+    label: "Researching destinationsâ€¦",
     status: "running",
     startedAt: Date.now(),
   };
@@ -337,7 +336,7 @@ async function executeDestinationSearch(query: string, context: TripContext): Pr
 
     toolCall.status = "done";
     toolCall.endedAt = Date.now();
-    toolCall.result = destinations;
+    toolCall.result = destinations as unknown as JsonValue;
 
     return { content: { destinations }, toolCall };
   } catch (error) {
@@ -374,7 +373,7 @@ async function executeWebSearch(query: string, label: string): Promise<{ sources
 
     toolCall.status = "done";
     toolCall.endedAt = Date.now();
-    toolCall.result = sources;
+    toolCall.result = sources as unknown as JsonValue;
 
     return { sources, toolCall };
   } catch (error) {
@@ -385,7 +384,7 @@ async function executeWebSearch(query: string, label: string): Promise<{ sources
   }
 }
 
-// ─── Response Generator ───────────────────────────────────────────────────────
+// â”€â”€â”€ Response Generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function generateTextResponse(
   message: string,
@@ -434,7 +433,7 @@ async function generateTextResponse(
   return response.text ?? "I'm sorry, I couldn't generate a response. Please try again.";
 }
 
-// ─── Follow-Up Suggestions ────────────────────────────────────────────────────
+// â”€â”€â”€ Follow-Up Suggestions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function generateFollowUps(
   intent: IntentType,
@@ -464,7 +463,7 @@ Return ONLY valid JSON array of strings.`;
   }
 }
 
-// ─── Main Agent ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse> {
   const { message, history, tripContext, mode } = request;
@@ -530,7 +529,7 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
 
       const { sources, toolCall } = await executeWebSearch(
         searchQuery,
-        `Researching: ${searchQuery.slice(0, 50)}…`
+        `Researching: ${searchQuery.slice(0, 50)}â€¦`
       );
       toolCalls.push(toolCall);
       allSources.push(...sources);
@@ -581,7 +580,7 @@ export async function runNovaAgent(request: AgentRequest): Promise<AgentResponse
   const finalContent: MessageContent = {
     type: "text",
     text: responseText,
-    sources: allSources.length > 0 ? allSources : undefined,
+    ...(allSources.length > 0 ? { sources: allSources } : {}),
     ...combinedContent,
   };
 

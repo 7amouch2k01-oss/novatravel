@@ -52,7 +52,7 @@ export const sendMessage = createServerFn({ method: "POST" })
   .validator((data: unknown) => ChatRequestSchema.parse(data))
   .handler(async ({ data }): Promise<AgentResponse> => {
     // Validate API key presence server-side
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env["GEMINI_API_KEY"]) {
       throw new Error(
         "NOVA is not configured. Please add GEMINI_API_KEY to your environment variables."
       );
@@ -95,7 +95,7 @@ export const sendMessage = createServerFn({ method: "POST" })
 
 export const checkApiStatus = createServerFn({ method: "GET" }).handler(
   async () => {
-    const hasKey = !!process.env.GEMINI_API_KEY;
+    const hasKey = !!process.env["GEMINI_API_KEY"];
     return {
       configured: hasKey,
       message: hasKey

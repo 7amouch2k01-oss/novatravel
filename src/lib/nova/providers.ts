@@ -19,6 +19,8 @@ import type {
   RestaurantSearchParams,
 } from "./types";
 
+export type { WebSearchResult };
+
 // ─── Web Search ───────────────────────────────────────────────────────────────
 
 export interface WebSearchProvider {

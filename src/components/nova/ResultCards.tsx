@@ -50,9 +50,9 @@ function PriceBadge({
   period,
 }: {
   status: "verified" | "estimated" | "unavailable";
-  price?: number;
-  currency?: string;
-  period?: string;
+  price?: number | undefined;
+  currency?: string | undefined;
+  period?: string | undefined;
 }) {
   if (status === "unavailable" || !price) {
     return (

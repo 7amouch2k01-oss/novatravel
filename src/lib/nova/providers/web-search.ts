@@ -8,7 +8,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import type { WebSearchProvider, WebSearchResult } from "./providers";
+import type { WebSearchProvider, WebSearchResult } from "../providers";
 
 const MODEL = "gemini-2.5-flash";
 
