@@ -148,11 +148,20 @@ export interface Itinerary {
   notes?: string | undefined;
 }
 
-export type BookingState = "search" | "booking_ready" | "confirmed" | "failed";
+export type BookingType = "hotel" | "flight";
+export type BookingState =
+  | "search"
+  | "needs_details"
+  | "options_found"
+  | "booking_ready"
+  | "confirmed"
+  | "failed";
 
 export interface BookingConfirmation {
   state: BookingState;
   provider: string;
+  type?: BookingType | undefined;
+  detailsNeeded?: string[] | undefined;
   referenceNumber?: string | undefined;
   item: string;
   date?: string | undefined;
@@ -254,6 +263,9 @@ export interface TripContext {
   travelers?: number | undefined;
   adults?: number | undefined;
   children?: number | undefined;
+  childrenAges?: number[] | undefined;
+  rooms?: number | undefined;
+  cabinClass?: string | undefined;
   budget?: number | undefined;
   currency?: string | undefined;
   accommodationPreference?: string | undefined;   // "budget" | "mid-range" | "luxury" | "any"
@@ -265,7 +277,10 @@ export interface TripContext {
   tripStyle?: string | undefined;                 // "relaxed" | "active" | "cultural" | "adventure"
   hotelName?: string | undefined;                 // selected hotel for booking
   flightId?: string | undefined;                  // selected flight for booking
+  bookingType?: BookingType | undefined;
+  bookingStatus?: "collecting_details" | "awaiting_selection" | undefined;
   stops?: string[] | undefined;                   // real destination slugs currently in the trip
+  proposedItinerary?: Itinerary | undefined;      // last generated plan awaiting the user's Confirm Plan click
   confirmedDaysPlan?: ItineraryDay[] | undefined;  // confirmed day-by-day plan
   isPlanConfirmed?: boolean | undefined;          // whether user approved/confirmed plan
 }
@@ -286,6 +301,7 @@ export type IntentType =
   | "DESTINATION_RESEARCH"
   | "BOOKING_REQUEST"
   | "BOOKING_CONFIRMATION"
+  | "CONFIRM_PLAN"
   | "TRIP_MODIFICATION"
   | "ITINERARY_BUILD"
   | "BUDGET_CALCULATION"
@@ -330,6 +346,8 @@ export interface HotelSearchParams {
   checkOut: string;
   adults: number;
   children?: number | undefined;
+  childrenAges?: number[] | undefined;
+  rooms?: number | undefined;
   maxResults?: number | undefined;
   budgetPerNight?: number | undefined;
   currency?: string | undefined;
@@ -343,6 +361,7 @@ export interface FlightSearchParams {
   returnDate?: string | undefined;
   adults: number;
   children?: number | undefined;
+  childrenAges?: number[] | undefined;
   cabinClass?: string | undefined;
   maxResults?: number | undefined;
 }

@@ -63,9 +63,13 @@ export function LiveGoogleMap({
       return `https://maps.google.com/maps?q=${first.lat},${first.lng}&t=${mapType}&z=${zoomLevel}&ie=UTF8&iwloc=&output=embed`;
     }
 
-    // When multiple stops exist, search query includes all cities for routing context
-    const routeQuery = uniqueStops.map((s) => s.name).join("+to+");
-    return `https://maps.google.com/maps?q=${routeQuery}&t=${mapType}&z=${zoomLevel}&ie=UTF8&iwloc=&output=embed`;
+    // Real driving route through every stop: saddr=origin & daddr=stop2+to:stop3…+to:last
+    const origin = encodeURIComponent(`${first ? first.name : "Tunis"}, Tunisia`);
+    const daddr = uniqueStops
+      .slice(1)
+      .map((s) => encodeURIComponent(`${s.name}, Tunisia`))
+      .join("+to+");
+    return `https://maps.google.com/maps?saddr=${origin}&daddr=${daddr}&t=${mapType}&ie=UTF8&iwloc=&output=embed`;
   }, [uniqueStops, mapType, zoomLevel]);
 
   // Google Maps Directions link for the real user route

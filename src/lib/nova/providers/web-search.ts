@@ -8,6 +8,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { extractGroundedSources, normalizeSourceUrl } from "../grounding";
 import type { WebSearchProvider, WebSearchResult } from "../providers";
 
 const MODEL = "gemini-3.5-flash-lite";
@@ -51,45 +52,42 @@ Return ONLY valid JSON, no other text. Format:
           },
         ],
         config: {
+          tools: [{ googleSearch: {} }],
           temperature: 0.1,
           responseMimeType: "application/json",
         },
       });
 
       const text = response.text ?? "";
-      
-      // Extract JSON from response
       const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        console.warn("[GeminiSearch] No JSON array found in response");
-        return [];
+      let modelResults: WebSearchResult[] = [];
+      if (jsonMatch) {
+        try {
+          const parsed: unknown = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed)) modelResults = parsed as WebSearchResult[];
+        } catch {
+          console.warn("[GeminiSearch] Search response JSON could not be parsed");
+        }
       }
 
-      const results = JSON.parse(jsonMatch[0]) as WebSearchResult[];
-      
-      // Also extract grounding metadata for additional sources
-      const metadata = response.candidates?.[0]?.groundingMetadata;
-      if (metadata?.groundingChunks) {
-        const groundingResults: WebSearchResult[] = metadata.groundingChunks
-          .filter((c) => c.web?.uri)
-          .slice(0, maxResults)
-          .map((c) => ({
-            title: c.web?.title ?? "Source",
-            url: c.web?.uri ?? "",
-            snippet: "",
-            source: new URL(c.web?.uri ?? "https://unknown").hostname,
-          }));
-
-        // Merge grounding URLs into results if they have matching URLs
-        return results.map((r) => {
-          const grounding = groundingResults.find((g) =>
-            g.url.includes(r.source)
-          );
-          return grounding ? { ...r, url: grounding.url } : r;
-        });
-      }
-
-      return results.slice(0, maxResults);
+      const groundedSources = extractGroundedSources(response, maxResults);
+      return groundedSources.map((source) => {
+        const matchingSummary = modelResults.find(
+          (result) => normalizeSourceUrl(result.url) === normalizeSourceUrl(source.url)
+        );
+        let hostname = "";
+        try {
+          hostname = new URL(source.url).hostname;
+        } catch {
+          // Source URLs have already been validated by extractGroundedSources.
+        }
+        return {
+          title: source.title,
+          url: source.url,
+          snippet: matchingSummary?.snippet ?? "",
+          source: hostname,
+        };
+      });
     } catch (error) {
       console.error("[GeminiSearch] Search failed:", error);
       throw new Error(

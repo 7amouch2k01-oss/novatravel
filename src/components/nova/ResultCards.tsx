@@ -11,6 +11,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import { NOVA_LAUNCH_MARKET } from "@/lib/nova/markets";
 import type {
   HotelResult,
   FlightResult,
@@ -386,20 +387,35 @@ export function BookingCard({ booking }: { booking: BookingConfirmation }) {
   const isConfirmed = booking.state === "confirmed";
   const isFailed = booking.state === "failed";
   const isReady = booking.state === "booking_ready";
+  const needsDetails = booking.state === "needs_details";
+  const optionsFound = booking.state === "options_found";
+  const isFlight = booking.type === "flight";
 
   return (
     <div className={cn(
       "rounded-2xl border p-5",
       isConfirmed && "border-accent/30 bg-accent/5",
       isFailed && "border-destructive/30 bg-destructive/5",
-      isReady && "border-border bg-card"
+      (isReady || needsDetails || optionsFound || booking.state === "search") && "border-border bg-card"
     )}>
       <div className="flex items-center gap-3">
         {isConfirmed && <CheckCircle2 className="size-5 text-accent" />}
         {isFailed && <AlertCircle className="size-5 text-destructive" />}
-        {isReady && <Hotel className="size-5 text-muted-foreground" />}
+        {(isReady || needsDetails || optionsFound || booking.state === "search") && (
+          isFlight ? <Plane className="size-5 text-muted-foreground" /> : <Hotel className="size-5 text-muted-foreground" />
+        )}
         <h3 className="font-semibold">
-          {isConfirmed ? "Booking Confirmed" : isFailed ? "Booking Failed" : "Ready to Book"}
+          {isConfirmed
+            ? "Booking Confirmed"
+            : isFailed
+              ? "Booking Failed"
+              : needsDetails
+                ? "Trip details needed"
+                : optionsFound
+                  ? "Options to review"
+                  : isReady
+                    ? "Ready to review"
+                    : "Preparing options"}
         </h3>
       </div>
 
@@ -414,7 +430,7 @@ export function BookingCard({ booking }: { booking: BookingConfirmation }) {
             <span>{booking.date}</span>
           </div>
         )}
-        {booking.price && (
+        {booking.price !== undefined && (
           <div className="flex justify-between">
             <span className="text-muted-foreground">Total</span>
             <span className="font-semibold">
@@ -435,6 +451,15 @@ export function BookingCard({ booking }: { booking: BookingConfirmation }) {
           </div>
         )}
       </div>
+
+      {booking.detailsNeeded && booking.detailsNeeded.length > 0 && (
+        <div className="mt-4 rounded-xl bg-secondary/70 p-3">
+          <p className="text-xs font-semibold text-foreground">Please share:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+            {booking.detailsNeeded.map((detail) => <li key={detail}>{detail}</li>)}
+          </ul>
+        </div>
+      )}
 
       <p className="mt-4 text-sm text-muted-foreground">{booking.message}</p>
 
@@ -514,7 +539,7 @@ export function ItineraryCard({
         {itinerary.totalEstimatedCost && (
           <div className="text-right">
             <span className="font-display text-lg font-semibold">
-              {itinerary.currency ?? "TND"} {itinerary.totalEstimatedCost.toLocaleString()}
+              {itinerary.currency ?? NOVA_LAUNCH_MARKET.defaultCurrency} {itinerary.totalEstimatedCost.toLocaleString()}
             </span>
             <p className="text-[10px] text-muted-foreground">estimated total</p>
           </div>

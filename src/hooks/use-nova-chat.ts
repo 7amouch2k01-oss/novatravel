@@ -53,38 +53,52 @@ interface UseChatOptions {
 }
 
 export function useNovaChat(options: UseChatOptions = {}) {
-  // Ensure an active chat session exists
-  const [activeChatIdState, setActiveChatIdState] = useState<string>(() => {
-    let currentId = getActiveChatId();
-    if (!currentId) {
-      const existing = getAllChats();
-      if (existing.length > 0 && existing[0]) {
-        currentId = existing[0].id;
-        setActiveChatId(currentId);
-      } else {
-        const savedCtx = getSavedTripContext() ?? options.initialContext ?? {};
-        const fresh = createNewChat({
-          tripContext: savedCtx,
-          title: savedCtx.destination ? `Trip to ${savedCtx.destination}` : "New Trip",
-        });
-        currentId = fresh.id;
-      }
-    }
-    return currentId;
-  });
-
-  const [chats, setChats] = useState<ChatSession[]>(() => getAllChats());
+  const initialContextRef = useRef(options.initialContext);
+  const [activeChatIdState, setActiveChatIdState] = useState<string>("");
+  const [chats, setChats] = useState<ChatSession[]>([]);
 
   const activeChat = chats.find((c) => c.id === activeChatIdState) ?? getChat(activeChatIdState);
 
-  const [messages, setMessages] = useState<Message[]>(() => activeChat?.messages ?? []);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [mode, setMode] = useState<AgentMode>(options.initialMode ?? "travel");
   const [tripContext, setTripContext] = useState<TripContext>(
-    () => activeChat?.tripContext ?? getSavedTripContext() ?? options.initialContext ?? {}
+    () => options.initialContext ?? {}
   );
   const [liveToolCalls, setLiveToolCalls] = useState<ToolCall[]>([]);
   const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Read browser-only chat storage after hydration to keep server and client markup in sync.
+  useEffect(() => {
+    let currentId = getActiveChatId();
+    let all = getAllChats();
+    let target = currentId ? all.find((chat) => chat.id === currentId) : undefined;
+
+    if (!target) {
+      if (all[0]) {
+        currentId = all[0].id;
+        setActiveChatId(currentId);
+      } else {
+        const savedContext = getSavedTripContext() ?? initialContextRef.current ?? {};
+        const fresh = createNewChat({
+          tripContext: savedContext,
+          title: savedContext.destination ? `Trip to ${savedContext.destination}` : "New Trip",
+        });
+        currentId = fresh.id;
+      }
+
+      all = getAllChats();
+      target = currentId ? all.find((chat) => chat.id === currentId) : undefined;
+    }
+
+    if (!currentId) return;
+    setActiveChatIdState(currentId);
+    setChats(all);
+    setMessages(target?.messages ?? []);
+    setTripContext(
+      target?.tripContext ?? getSavedTripContext() ?? initialContextRef.current ?? {}
+    );
+  }, []);
 
   // Sync chats list on storage events
   useEffect(() => {

@@ -33,7 +33,6 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { NovaMark, Wordmark } from "@/components/nova/NovaMark";
-import { RouteMap } from "@/components/nova/RouteMap";
 import { LiveGoogleMap } from "@/components/nova/LiveGoogleMap";
 import { MessageBubble } from "@/components/nova/MessageBubble";
 import { ToolCallIndicator } from "@/components/nova/ToolCallIndicator";
@@ -181,7 +180,6 @@ function Workspace() {
   const [input, setInput] = useState("");
   const [selectedAttachment, setSelectedAttachment] = useState<DocumentAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [sidebarMapMode, setSidebarMapMode] = useState<"google" | "schematic">("google");
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(360);
   const [isDraggingResizer, setIsDraggingResizer] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -702,63 +700,22 @@ function Workspace() {
 
         {/* Live Interactive Map of Real Destinations */}
         <div className="mt-6">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Live route map
-            </p>
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/50 p-0.5 text-[10px]">
-              <button
-                type="button"
-                onClick={() => setSidebarMapMode("google")}
-                className={`rounded px-1.5 py-0.5 font-medium transition-colors ${
-                  sidebarMapMode === "google"
-                    ? "bg-card text-foreground shadow-xs font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Google Map
-              </button>
-              <button
-                type="button"
-                onClick={() => setSidebarMapMode("schematic")}
-                className={`rounded px-1.5 py-0.5 font-medium transition-colors ${
-                  sidebarMapMode === "schematic"
-                    ? "bg-card text-foreground shadow-xs font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Route
-              </button>
-            </div>
-          </div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Live route map
+          </p>
 
-          {sidebarMapMode === "google" ? (
-            <LiveGoogleMap
-              stops={
-                tripContext.stops && tripContext.stops.length > 0
-                  ? tripContext.stops
-                  : tripContext.destination
-                  ? [tripContext.destination]
-                  : []
-              }
-              activeDestination={tripContext.destination}
-              height="200px"
-              className="mt-3"
-            />
-          ) : (
-            <RouteMap
-              stops={
-                tripContext.stops && tripContext.stops.length > 0
-                  ? tripContext.stops
-                  : tripContext.destination
-                  ? [tripContext.destination]
-                  : []
-              }
-              activeDestination={tripContext.destination}
-              compact
-              className="mt-3 h-48"
-            />
-          )}
+          <LiveGoogleMap
+            stops={
+              tripContext.stops && tripContext.stops.length > 0
+                ? tripContext.stops
+                : tripContext.destination
+                ? [tripContext.destination]
+                : []
+            }
+            activeDestination={tripContext.destination}
+            height="200px"
+            className="mt-3"
+          />
         </div>
 
         {/* Confirmed Days Plan Section */}

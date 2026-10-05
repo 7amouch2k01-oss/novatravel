@@ -9,7 +9,10 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "hotelbeds:sandbox:search": "bun run scripts/hotelbeds-sandbox-search.ts",
+    "hotelbeds:csr-bridge": "bun run scripts/hotelbeds-csr-bridge.ts",
+    "hotelbeds:sandbox:book-cancel": "bun run scripts/hotelbeds-sandbox-book-cancel.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"

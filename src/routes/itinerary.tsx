@@ -12,7 +12,6 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { SiteNav } from "@/components/nova/SiteNav";
-import { RouteMap } from "@/components/nova/RouteMap";
 import { LiveGoogleMap } from "@/components/nova/LiveGoogleMap";
 import { NovaMark } from "@/components/nova/NovaMark";
 import { bySlug } from "@/lib/tunisia";
@@ -40,7 +39,6 @@ export const Route = createFileRoute("/itinerary")({
 
 function ItineraryPage() {
   const [tripContext, setTripContext] = useState<TripContext | null>(null);
-  const [mapMode, setMapMode] = useState<"google" | "schematic">("google");
 
   useEffect(() => {
     // Initial load
@@ -291,55 +289,15 @@ function ItineraryPage() {
             )}
           </div>
 
-          {/* Right Column: Live Google Map & Route Overview */}
+          {/* Right Column: Real Google Map & Route Overview */}
           <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-            {/* Map Mode Selector */}
-            <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 p-1">
-              <button
-                type="button"
-                onClick={() => setMapMode("google")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all ${
-                  mapMode === "google"
-                    ? "bg-card text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Live Google Map
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapMode("schematic")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all ${
-                  mapMode === "schematic"
-                    ? "bg-card text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Tunisia Route
-              </button>
-            </div>
-
-            {/* Live Map Display */}
-            {mapMode === "google" ? (
-              <LiveGoogleMap
-                stops={activeStops}
-                activeDestination={tripContext?.destination}
-                height="420px"
-                title={
-                  activeStops.length > 0
-                    ? `Live Google Map (${activeStops.length} stops)`
-                    : "Live Google Map of Tunisia"
-                }
-              />
-            ) : (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card p-4">
-                <RouteMap
-                  stops={activeStops}
-                  activeDestination={tripContext?.destination}
-                  className="aspect-[10/9] w-full"
-                />
-              </div>
-            )}
+            {/* Real Interactive Google Map with the user's route */}
+            <LiveGoogleMap
+              stops={activeStops}
+              activeDestination={tripContext?.destination}
+              height="420px"
+              title="Live Google Map"
+            />
 
             {/* Quick Summary Card */}
             <div className="rounded-2xl border border-border bg-card p-5">

@@ -8,6 +8,7 @@
 
 import type {
   WebSearchResult,
+  Source,
   HotelResult,
   FlightResult,
   ActivityResult,
@@ -20,6 +21,11 @@ import type {
 } from "./types";
 
 export type { WebSearchResult };
+
+export interface GroundedSearchResults<T> {
+  items: T[];
+  sources: Source[];
+}
 
 // ─── Web Search ───────────────────────────────────────────────────────────────
 
@@ -34,30 +40,30 @@ export interface WebSearchProvider {
 export interface HotelProvider {
   readonly name: string;
   readonly supportsLivePricing: boolean;
-  search(params: HotelSearchParams): Promise<HotelResult[]>;
+  search(params: HotelSearchParams): Promise<GroundedSearchResults<HotelResult>>;
   checkAvailability(hotelId: string, params: HotelSearchParams): Promise<boolean>;
 }
 
 export interface FlightProvider {
   readonly name: string;
   readonly supportsLivePricing: boolean;
-  search(params: FlightSearchParams): Promise<FlightResult[]>;
+  search(params: FlightSearchParams): Promise<GroundedSearchResults<FlightResult>>;
 }
 
 export interface ActivityProvider {
   readonly name: string;
   readonly supportsLivePricing: boolean;
-  search(params: ActivitySearchParams): Promise<ActivityResult[]>;
+  search(params: ActivitySearchParams): Promise<GroundedSearchResults<ActivityResult>>;
 }
 
 export interface RestaurantProvider {
   readonly name: string;
-  search(params: RestaurantSearchParams): Promise<RestaurantResult[]>;
+  search(params: RestaurantSearchParams): Promise<GroundedSearchResults<RestaurantResult>>;
 }
 
 export interface DestinationProvider {
   readonly name: string;
-  search(query: string, context?: string): Promise<DestinationResult[]>;
+  search(query: string, context?: string): Promise<GroundedSearchResults<DestinationResult>>;
 }
 
 // ─── Booking Provider ─────────────────────────────────────────────────────────

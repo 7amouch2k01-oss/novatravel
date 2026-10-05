@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatMoney } from "@/lib/currency";
+import { NOVA_LAUNCH_MARKET } from "@/lib/nova/markets";
 
 const colors = [
   "hsl(var(--accent, 221 83% 53%))",      // Accommodation - blue / primary accent
@@ -63,7 +64,7 @@ export function BudgetDonut({
   size = 220,
   items,
   total,
-  currency = "TND",
+  currency = NOVA_LAUNCH_MARKET.defaultCurrency,
 }: {
   size?: number | undefined;
   items?: BudgetItem[] | undefined;

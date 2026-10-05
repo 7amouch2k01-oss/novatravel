@@ -9,6 +9,9 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { extractGroundedSources, normalizeSourceUrl } from "../grounding";
+import { withRetry } from "../retry";
+import type { GroundedSearchResults } from "../providers";
 import type {
   HotelProvider,
   FlightProvider,
@@ -40,41 +43,81 @@ async function searchWithGrounding<T>(
   query: string,
   schema: string,
   maxResults: number
-): Promise<T[]> {
+): Promise<GroundedSearchResults<T>> {
   const ai = getAI();
 
-  const prompt = `Research current information for this travel query: "${query}"
+  const rules = (grounded: boolean) =>
+    grounded
+      ? `Rules:
+- Include only options supported by the search results.
+- Never invent a specific price, exact availability, cancellation term, or booking confirmation.
+- Search summaries are research leads, not live supplier inventory or offers.
+- Set priceStatus to "estimated" for indicative prices and "unavailable" when no price is found.
+- Return only valid JSON.`
+      : `Rules:
+- Live search is NOT available for this request: return well-known, typical options from general travel knowledge instead.
+- Set priceStatus to "estimated" (typical indicative range) or "unavailable" — never "verified".
+- Set bookingUrl to null and provider to "AI research (unverified)".
+- Never claim current availability, opening hours, or bookable inventory.
+- Return only valid JSON.`;
 
-Search for up-to-date information and return a JSON array of up to ${maxResults} results.
-Schema: ${schema}
+  const prompt = (grounded: boolean) =>
+    `${grounded ? "Use Google Search to research" : "Research"} current information for this travel query: "${query}"
 
-IMPORTANT RULES:
-- Only include information you found through search
-- Mark prices as "estimated" if they are typical ranges, "verified" if from official/booking sites
-- Include real booking URLs when found
-- Set priceStatus to "unavailable" if no price information was found
-- Never invent specific prices, hotel names, or booking confirmations
-- Return ONLY valid JSON array, no other text`;
+Return a JSON array of up to ${maxResults} options using this schema: ${schema}
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      temperature: 0.2,
-      responseMimeType: "application/json",
-    },
-  });
+${rules(grounded)}`;
 
+  const generate = (grounded: boolean) =>
+    ai.models.generateContent({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt(grounded) }] }],
+      config: {
+        ...(grounded ? { tools: [{ googleSearch: {} }] } : {}),
+        temperature: 0.2,
+        responseMimeType: "application/json",
+      },
+    });
+
+  let grounded = true;
+  let response;
+  try {
+    response = await withRetry(() => generate(true), 2, "TravelProvider");
+  } catch (groundedErr) {
+    console.warn(
+      "[TravelProvider] Grounded search unavailable, using AI knowledge fallback:",
+      groundedErr instanceof Error ? groundedErr.message : groundedErr
+    );
+    grounded = false;
+    response = await withRetry(() => generate(false), 2, "TravelProviderOffline");
+  }
+
+  const sources = extractGroundedSources(response, maxResults);
   const text = response.text ?? "";
   const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return [];
+  // Grounded results without citations are discarded (anti-hallucination guard);
+  // the ungrounded fallback carries no citations by design, so accept it as-is.
+  if (!jsonMatch || (grounded && sources.length === 0)) return { items: [], sources };
 
   try {
-    return JSON.parse(jsonMatch[0]) as T[];
+    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    return {
+      items: Array.isArray(parsed) ? (parsed.slice(0, maxResults) as T[]) : [],
+      sources,
+    };
   } catch {
     console.error("[TravelProvider] JSON parse error:", text.slice(0, 500));
-    return [];
+    return { items: [], sources };
   }
+}
+
+function keepOnlyGroundedLink(
+  candidate: string | undefined,
+  sources: GroundedSearchResults<unknown>["sources"]
+): string | undefined {
+  const normalizedCandidate = normalizeSourceUrl(candidate);
+  if (!normalizedCandidate) return undefined;
+  return sources.find((source) => normalizeSourceUrl(source.url) === normalizedCandidate)?.url;
 }
 
 // ─── Hotel Provider ───────────────────────────────────────────────────────────
@@ -83,8 +126,8 @@ export class GeminiHotelProvider implements HotelProvider {
   readonly name = "Gemini Hotel Research";
   readonly supportsLivePricing = false; // Enable with Amadeus/Booking.com API
 
-  async search(params: HotelSearchParams): Promise<HotelResult[]> {
-    const query = `Hotels in ${params.destination} check-in ${params.checkIn} check-out ${params.checkOut} ${params.adults} adults${params.children ? ` ${params.children} children` : ""} ${params.category ?? ""}`;
+  async search(params: HotelSearchParams): Promise<GroundedSearchResults<HotelResult>> {
+    const query = `Hotels in ${params.destination} check-in ${params.checkIn} check-out ${params.checkOut} ${params.adults} adults${params.children ? ` ${params.children} children${params.childrenAges?.length ? ` aged ${params.childrenAges.join(", ")}` : ""}` : ""}, ${params.rooms ?? 1} room(s) ${params.category ?? ""}`;
 
     const schema = `{
   "id": "unique_id",
@@ -105,18 +148,24 @@ export class GeminiHotelProvider implements HotelProvider {
   "available": true_or_null
 }`;
 
-    const results = await searchWithGrounding<HotelResult>(
+    const { items, sources } = await searchWithGrounding<HotelResult>(
       query,
       schema,
       params.maxResults ?? 6
     );
 
-    return results.map((h, i) => ({
-      ...h,
-      id: h.id ?? `hotel-${i}`,
-      amenities: h.amenities ?? [],
-      priceStatus: h.priceStatus ?? "estimated",
-    }));
+    return {
+      items: items.map((h, i) => ({
+        ...h,
+        id: h.id ?? `hotel-${i}`,
+        amenities: h.amenities ?? [],
+        priceStatus: typeof h.pricePerNight === "number" || typeof h.totalPrice === "number" ? "estimated" : "unavailable",
+        available: undefined,
+        cancellationPolicy: undefined,
+        bookingUrl: keepOnlyGroundedLink(h.bookingUrl, sources),
+      })),
+      sources,
+    };
   }
 
   async checkAvailability(
@@ -134,8 +183,8 @@ export class GeminiFlightProvider implements FlightProvider {
   readonly name = "Gemini Flight Research";
   readonly supportsLivePricing = false; // Enable with Amadeus/Skyscanner API
 
-  async search(params: FlightSearchParams): Promise<FlightResult[]> {
-    const query = `Flights from ${params.origin} to ${params.destination} on ${params.departureDate}${params.returnDate ? ` return ${params.returnDate}` : " one-way"} ${params.adults} adults ${params.cabinClass ?? "economy"}`;
+  async search(params: FlightSearchParams): Promise<GroundedSearchResults<FlightResult>> {
+    const query = `Flights from ${params.origin} to ${params.destination} on ${params.departureDate}${params.returnDate ? ` return ${params.returnDate}` : " one-way"} ${params.adults} adults${params.children ? ` ${params.children} children${params.childrenAges?.length ? ` aged ${params.childrenAges.join(", ")}` : ""}` : ""} ${params.cabinClass ?? "economy"}`;
 
     const schema = `{
   "id": "unique_id",
@@ -156,17 +205,22 @@ export class GeminiFlightProvider implements FlightProvider {
   "available": true_or_null
 }`;
 
-    const results = await searchWithGrounding<FlightResult>(
+    const { items, sources } = await searchWithGrounding<FlightResult>(
       query,
       schema,
       params.maxResults ?? 5
     );
 
-    return results.map((f, i) => ({
-      ...f,
-      id: f.id ?? `flight-${i}`,
-      priceStatus: f.priceStatus ?? "estimated",
-    }));
+    return {
+      items: items.map((f, i) => ({
+        ...f,
+        id: f.id ?? `flight-${i}`,
+        priceStatus: typeof f.price === "number" ? "estimated" : "unavailable",
+        available: undefined,
+        bookingUrl: keepOnlyGroundedLink(f.bookingUrl, sources),
+      })),
+      sources,
+    };
   }
 }
 
@@ -176,7 +230,7 @@ export class GeminiActivityProvider implements ActivityProvider {
   readonly name = "Gemini Activity Research";
   readonly supportsLivePricing = false;
 
-  async search(params: ActivitySearchParams): Promise<ActivityResult[]> {
+  async search(params: ActivitySearchParams): Promise<GroundedSearchResults<ActivityResult>> {
     const query = `Top activities and attractions in ${params.destination}${params.interests?.length ? ` for ${params.interests.join(", ")}` : ""} with prices and booking info`;
 
     const schema = `{
@@ -196,18 +250,22 @@ export class GeminiActivityProvider implements ActivityProvider {
   "priceStatus": "verified|estimated|unavailable"
 }`;
 
-    const results = await searchWithGrounding<ActivityResult>(
+    const { items, sources } = await searchWithGrounding<ActivityResult>(
       query,
       schema,
       params.maxResults ?? 8
     );
 
-    return results.map((a, i) => ({
-      ...a,
-      id: a.id ?? `activity-${i}`,
-      categories: a.categories ?? [],
-      priceStatus: a.priceStatus ?? "estimated",
-    }));
+    return {
+      items: items.map((a, i) => ({
+        ...a,
+        id: a.id ?? `activity-${i}`,
+        categories: a.categories ?? [],
+        priceStatus: typeof a.price === "number" ? "estimated" : "unavailable",
+        bookingUrl: keepOnlyGroundedLink(a.bookingUrl, sources),
+      })),
+      sources,
+    };
   }
 }
 
@@ -216,7 +274,7 @@ export class GeminiActivityProvider implements ActivityProvider {
 export class GeminiRestaurantProvider implements RestaurantProvider {
   readonly name = "Gemini Restaurant Research";
 
-  async search(params: RestaurantSearchParams): Promise<RestaurantResult[]> {
+  async search(params: RestaurantSearchParams): Promise<GroundedSearchResults<RestaurantResult>> {
     const query = `Best restaurants in ${params.destination}${params.cuisine ? ` ${params.cuisine} cuisine` : ""} with ratings and reviews`;
 
     const schema = `{
@@ -234,17 +292,22 @@ export class GeminiRestaurantProvider implements RestaurantProvider {
   "priceStatus": "verified|estimated|unavailable"
 }`;
 
-    const results = await searchWithGrounding<RestaurantResult>(
+    const { items, sources } = await searchWithGrounding<RestaurantResult>(
       query,
       schema,
       params.maxResults ?? 6
     );
 
-    return results.map((r, i) => ({
-      ...r,
-      id: r.id ?? `restaurant-${i}`,
-      priceStatus: r.priceStatus ?? "estimated",
-    }));
+    return {
+      items: items.map((r, i) => ({
+        ...r,
+        id: r.id ?? `restaurant-${i}`,
+        priceStatus: r.priceRange ? "estimated" : "unavailable",
+        bookingUrl: keepOnlyGroundedLink(r.bookingUrl, sources),
+        websiteUrl: keepOnlyGroundedLink(r.websiteUrl, sources),
+      })),
+      sources,
+    };
   }
 }
 
@@ -253,7 +316,7 @@ export class GeminiRestaurantProvider implements RestaurantProvider {
 export class GeminiDestinationProvider implements DestinationProvider {
   readonly name = "Gemini Destination Research";
 
-  async search(query: string, _context?: string): Promise<DestinationResult[]> {
+  async search(query: string, _context?: string): Promise<GroundedSearchResults<DestinationResult>> {
     const schema = `{
   "id": "unique_id",
   "name": "Destination name",
@@ -270,37 +333,55 @@ export class GeminiDestinationProvider implements DestinationProvider {
 }`;
 
     const ai = getAI();
-    const prompt = `Research destinations for this travel query: "${query}"
+    const prompt = (grounded: boolean) => `${grounded ? "Research destinations with up-to-date information" : "Suggest destinations from general travel knowledge"} for this travel query: "${query}"
 
-Find up-to-date information about suitable destinations and return a JSON array of up to 5 results.
+Find up to 5 suitable destinations and return a JSON array.
 Schema: ${schema}
+${grounded ? "\nBe specific about WHY each destination matches the query. Research current travel conditions.\nReturn ONLY valid JSON array." : '\nLive research is unavailable: use well-known destinations, set "averageCost" as a typical range, and never claim current travel conditions.\nReturn ONLY valid JSON array.'}`;
 
-Be specific about WHY each destination matches the query. Research current travel conditions.
-Return ONLY valid JSON array.`;
+    const generate = (grounded: boolean) =>
+      ai.models.generateContent({
+        model: MODEL,
+        contents: [{ role: "user", parts: [{ text: prompt(grounded) }] }],
+        config: {
+          ...(grounded ? { tools: [{ googleSearch: {} }] } : {}),
+          temperature: 0.2,
+          responseMimeType: "application/json",
+        },
+      });
 
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
-        temperature: 0.3,
-        responseMimeType: "application/json",
-      },
-    });
+    let grounded = true;
+    let response;
+    try {
+      response = await withRetry(() => generate(true), 2, "DestinationProvider");
+    } catch (groundedErr) {
+      console.warn(
+        "[DestinationProvider] Grounded search unavailable, using AI knowledge fallback:",
+        groundedErr instanceof Error ? groundedErr.message : groundedErr
+      );
+      grounded = false;
+      response = await withRetry(() => generate(false), 2, "DestinationProviderOffline");
+    }
 
+    const sources = extractGroundedSources(response, 6);
     const text = response.text ?? "";
     const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
+    if (!jsonMatch || (grounded && sources.length === 0)) return { items: [], sources };
 
     try {
-      const results = JSON.parse(jsonMatch[0]) as DestinationResult[];
-      return results.map((d, i) => ({
-        ...d,
-        id: d.id ?? `dest-${i}`,
-        highlights: d.highlights ?? [],
-        bestFor: d.bestFor ?? [],
-      }));
+      const parsed: unknown = JSON.parse(jsonMatch[0]);
+      const items = Array.isArray(parsed) ? (parsed as DestinationResult[]) : [];
+      return {
+        items: items.map((d, i) => ({
+          ...d,
+          id: d.id ?? `dest-${i}`,
+          highlights: d.highlights ?? [],
+          bestFor: d.bestFor ?? [],
+        })),
+        sources,
+      };
     } catch {
-      return [];
+      return { items: [], sources };
     }
   }
 }
